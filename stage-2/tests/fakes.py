@@ -18,8 +18,9 @@ PAGES = {
 
 
 class FakeWeb:
-    def __init__(self, pages=None, refuse=None, delay=0.0, claims=None, lost=None):
+    def __init__(self, pages=None, refuse=None, delay=0.0, claims=None, lost=None, hidden=()):
         self.pages = dict(PAGES if pages is None else pages)
+        self.hidden = set(hidden)          # pages no search returns (research may cite them)
         self.refuse = refuse or (lambda method, arg, attempt: False)
         self.lost = lost or (lambda method, arg: False)
         self.delay = delay
@@ -33,17 +34,22 @@ class FakeWeb:
         self._attempts[(method, arg)] = attempt
         if self.delay:
             await asyncio.sleep(self.delay)
-        if self.refuse(method, arg, attempt):
-            return CallOutcome(ok=False, charged=False, refused=True)
+        refusal = self.refuse(method, arg, attempt)
+        if refusal:
+            return CallOutcome(ok=False, charged=False, refused=True,
+                               rate_limited=refusal == 429)
         if self.lost(method, arg):
             return CallOutcome(ok=False, charged=True)
         return None
 
     async def search(self, query):
         return await self._answer("search", query) or CallOutcome(
-            ok=True, charged=True, urls=list(self.pages))
+            ok=True, charged=True, results=[(url, "") for url in self.searchable()])
 
-    async def extract(self, url):
+    def searchable(self):
+        return [url for url in self.pages if url not in self.hidden]
+
+    async def extract_rendered(self, url):
         failed = await self._answer("extract", url)
         if failed:
             return failed

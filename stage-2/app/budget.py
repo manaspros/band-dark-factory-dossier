@@ -10,13 +10,18 @@ _COSTS = {
     ("tavily", "search", "lite"): 8, ("tavily", "search", "fast"): 16,
     ("tavily", "search", "deep"): 16,
     ("nimble", "extract", None): 1, ("tavily", "extract", None): 2,
+    ("nimble", "render", None): 3,           # extract that loads the page in a browser
     ("nimble", "research", None): 25,
+    ("kernel", "open", None): 0, ("browserbase", "open", None): 2,
+    ("kernel", "page", None): 1, ("browserbase", "page", None): 1,
+    ("browserbase", "browse", None): 4,
 }
+_PER_URL = ("extract", "render")
 
 
 def cost_of(provider: str, method: str, depth: str | None = None, urls: int = 1) -> int:
     units = _COSTS[(provider, method, depth)]
-    return units * urls if method == "extract" else units
+    return units * urls if method in _PER_URL else units
 
 
 class Budget:

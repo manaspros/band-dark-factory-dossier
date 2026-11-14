@@ -6,9 +6,13 @@ logs them. SDK retries are off so that every attempt is one billable call the bu
 see and account for (§9).
 
 Each call returns a ``CallOutcome`` that says whether it succeeded and whether it costs
-units: a call the provider refuses with an error status costs nothing; a call whose
-answer never arrives (timeout, connection failure) or that fails for any other reason
-is charged in full, which can only over-count, never exceed the budget.
+units: a call the provider refuses with an error status costs nothing (a 429 is flagged
+separately, since it is retried differently); a call whose answer never arrives (timeout,
+connection failure) or that fails for any other reason is charged in full, which can only
+over-count, never exceed the budget.
+
+Page text comes only from Nimble's rendered extract: the text a browser shows once the
+page has loaded, with no control activated (stage-2 "Page text").
 """
 from __future__ import annotations
 
@@ -39,7 +43,8 @@ class CallOutcome:
     ok: bool
     charged: bool
     refused: bool = False
-    urls: list[str] = field(default_factory=list)   # search results, in rank order
+    rate_limited: bool = False                       # refused with 429
+    results: list[tuple[str, str]] = field(default_factory=list)  # (url, snippet), ranked
     pages: list[Page] = field(default_factory=list)
     claims: list[Claim] = field(default_factory=list)
     job: Any = None                                  # research job handle
@@ -73,7 +78,8 @@ def classify_failure(exc: BaseException, method: str) -> CallOutcome:
     refused = status is not None and status >= 400
     if method == "extract" and refused and not (status == 429 or status >= 500):
         refused = False
-    return CallOutcome(ok=False, charged=not refused, refused=refused)
+    return CallOutcome(ok=False, charged=not refused, refused=refused,
+                       rate_limited=refused and status == 429)
 
 
 class WebClient:
@@ -96,12 +102,14 @@ class WebClient:
                 query, provider=PROVIDER, search_depth="lite", max_results=10)
         except Exception as exc:  # noqa: BLE001 - every failure is classified
             return classify_failure(exc, "search")
-        return CallOutcome(ok=True, charged=True,
-                           urls=[r.url for r in response.results if r.url])
+        return CallOutcome(ok=True, charged=True, results=[
+            (r.url, r.description or "") for r in response.results if r.url])
 
-    async def extract(self, url: str) -> CallOutcome:
+    async def extract_rendered(self, url: str) -> CallOutcome:
+        """The text a browser shows once ``url`` has loaded (3 units, §9 stage 2)."""
         try:
-            response = await self._get_router().extract(url, provider=PROVIDER, format="markdown")
+            response = await self._get_router().extract(
+                url, provider=PROVIDER, format="markdown", provider_options={"render": True})
         except Exception as exc:  # noqa: BLE001
             return classify_failure(exc, "extract")
         pages = [Page(d.url or url, d.content) for d in response.documents if d.content]

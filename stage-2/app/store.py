@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 
 from app.domains import is_valid as is_valid_domain
 from app.errors import invalid
-from app.evidence import empty_fields
+from app.migrate import import_field, valid_field
+from app.selection import empty_fields
 from app.support import FIELDS
 
 
@@ -128,21 +129,6 @@ def _is_user(state: State, value) -> bool:
     return isinstance(value, str) and value in state.users
 
 
-def _valid_field(name: str, value) -> bool:
-    if not isinstance(value, dict) or set(value) != {"value", "status", "citations"}:
-        return False
-    citations = value["citations"]
-    if not isinstance(citations, list) or not all(
-            isinstance(c, dict) and set(c) == {"url", "excerpt", "provider"}
-            and all(_is_str(c[k]) for k in c) for c in citations):
-        return False
-    if value["value"] is None:
-        return value["status"] == "unknown" and citations == []
-    typed = _is_int(value["value"]) if name in ("founded_year", "funding_total") else _is_str(
-        value["value"])
-    return typed and value["status"] == "known" and len(citations) >= 1
-
-
 def import_state(payload) -> State:
     """Validate an export completely, then build the State it describes; 422 otherwise."""
     _require(isinstance(payload, dict), "export must be an object")
@@ -173,12 +159,14 @@ def import_state(payload) -> State:
                  and (d.get("researched_at") is None or _is_str(d.get("researched_at")))
                  and _is_int(d.get("spent_units")) and d["spent_units"] >= 0
                  and isinstance(d.get("fields"), dict) and set(d["fields"]) == set(FIELDS)
-                 and all(_valid_field(n, v) for n, v in d["fields"].items()), "dossier")
+                 and all(valid_field(n, v) for n, v in d["fields"].items()), "dossier")
         _require(d["dossier_id"] not in dossier_ids and d["domain"] not in state.dossiers
                  and d["dossier_id"] not in state.users, "duplicate dossier")
         dossier_ids.add(d["dossier_id"])
+        fields = {name: import_field(name, value, d["researched_at"])
+                  for name, value in d["fields"].items()}
         state.dossiers[d["domain"]] = Dossier(d["dossier_id"], d["domain"], d["state"],
-                                              d["fields"], d["researched_at"], d["spent_units"])
+                                              fields, d["researched_at"], d["spent_units"])
     for r in raw["idempotency"]:
         _require(isinstance(r, dict) and _is_user(state, r.get("user_id"))
                  and _is_str(r.get("method"), min_len=1) and _is_str(r.get("path"))

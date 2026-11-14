@@ -154,6 +154,25 @@ def prose(text: str) -> str:
     return ""
 
 
+def header(text: str) -> dict[str, str]:
+    """The page's header lines as {name: value}, the first occurrence of each name.
+
+    The header is the block of header lines a text starts with, up to the first empty line
+    (§4 Pages); a text whose first line is not a header line has none.
+    """
+    lines = _lines(text)
+    if not lines or not _is_header_line(lines[0]):
+        return {}
+    found: dict[str, str] = {}
+    for line in lines:
+        if line.strip() == "":
+            break
+        if _is_header_line(line):
+            name, _, value = line.partition(":")
+            found.setdefault(name, value.strip())
+    return found
+
+
 # --------------------------------------------------------------------------- sentences (A.1)
 
 def _ends_legal_suffix(line: str, dot_index: int) -> bool:
