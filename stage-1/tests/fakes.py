@@ -55,6 +55,9 @@ class FakeWeb:
             ok=True, charged=True, job="job")
 
     async def poll_research(self, job):
+        self.calls.append(("poll", job))
+        if self.delay:
+            await asyncio.sleep(2 * self.delay)  # a status check, then the result fetch
         return CallOutcome(ok=True, charged=False, done=True,
                            claims=[Claim(f, u, (e,)) for f, u, e in self.claims])
 

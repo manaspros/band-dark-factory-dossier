@@ -33,7 +33,7 @@ def test_every_call_refused_fails_fast_and_free():
     build = Build(DOMAIN, web)
     began = time.monotonic()
     assert run(build) is None
-    assert time.monotonic() - began < 2
+    assert time.monotonic() - began < 3      # two 1.05 s backoffs, nothing else
     assert build.budget.charged == 0
     assert max(web.calls.count(c) for c in web.calls) == 3
 
@@ -57,12 +57,14 @@ def test_lost_calls_are_charged_and_not_retried():
     assert build.budget.charged == 8 + len(PAGES) + 25
 
 
-def test_research_skipped_when_every_field_known():
+def test_research_runs_once_beside_the_searches():
     pages = dict(PAGES)
     pages["https://acme-robotics.test/legal"] = "The legal name is Acme Robotics, Inc. today."
     web = FakeWeb(pages=pages)
     fields = run(Build(DOMAIN, web))
-    assert web.count("research") == 0
+    assert web.count("research") == 1
+    methods = [m for m, _ in web.calls]
+    assert methods.index("research") < methods.index("extract")  # started before extracts
     assert all(f["status"] == "known" for f in fields.values())
 
 
@@ -84,7 +86,17 @@ def test_citations_come_from_served_text():
             assert c["excerpt"] in " ".join(PAGES[c["url"]].split())
 
 
-def test_fast_regime_ends_within_ten_seconds():
+def test_throttled_first_attempts_still_ready_within_ten_seconds():
+    """Every call's first attempt is refused; every answer takes 0.9 s (R127)."""
+    web = FakeWeb(delay=0.9, refuse=lambda m, a, n: n == 1)
+    began = time.monotonic()
+    fields = run(Build(DOMAIN, web))
+    assert time.monotonic() - began < 10
+    assert fields is not None and fields["ceo"]["value"] == "Dana Ruiz"
+    assert web.calls.count(("search", DOMAIN)) == 2
+
+
+def test_fast_regime_bound_with_two_refusals_and_many_urls():
     pages = {f"https://site{i}.test/p": "Nothing here." for i in range(60)}
     web = FakeWeb(pages=pages, delay=0.9,
                   refuse=lambda m, a, n: n < 3 or (m == "search" and a == DOMAIN))

@@ -5,15 +5,17 @@ Plan, all through Nimble (plan "Search strategy and budget"):
 1. Lite searches at once: exactly one whose query is the bare normalised domain, one per
    field (the domain plus that field's statement phrases) and one for the company name.
 2. Extract every result URL at once, in rank order (domain query first), up to what the
-   budget allows while keeping 25 units for a research run.
-3. Evaluate every gathered page with Appendix A.
-4. Only if some field is still unknown and 25 units remain: one Nimble research run
-   asking for all six fields; each claim counts only where its excerpt supports it.
+   budget allows after the searches and the research run (80 - 8 - 25 = 47 URLs).
+3. Concurrently with 1 and 2: one Nimble research run asking for all six fields; each
+   claim counts only where its excerpt supports it (lead ruling L1 amended: research
+   starts with the searches so its retries and polling overlap them).
+4. Evaluate every gathered page and claim with Appendix A.
 
-Retries (lead ruling L1/L2): only calls the provider refuses with an error status (free)
-are retried, at most twice, 0.05 s then 0.15 s apart. Lost calls (timeouts, connection
-failures) are charged and not retried. While every attempt has answered within 1 s (the
-"fast regime"), no retry starts after 4 s, which keeps the build within 10 s (§8).
+Retries (lead ruling L1 amended, L2): only calls the provider refuses with an error
+status (free) are retried, at most twice, 1.05 s apart, so a retry falls outside a
+provider's one-second repeat window. Lost calls (timeouts, connection failures) are
+charged and not retried. While every attempt has answered within 1 s (the "fast
+regime"), no retry starts after 8 s, which keeps the build within 10 s (§8).
 
 The build only writes to the store at the end, in one synchronous step, and only if no
 reset or import replaced the state meanwhile (§3.3, §10).
@@ -38,9 +40,9 @@ RESEARCH_UNITS = cost_of(PROVIDER, "research")
 SEARCH_UNITS = cost_of(PROVIDER, "search", "lite")
 EXTRACT_UNITS = cost_of(PROVIDER, "extract")
 
-RETRY_BACKOFF_SECONDS = (0.05, 0.15)     # at most 2 retries, 0.2 s in total
+RETRY_BACKOFF_SECONDS = (1.05, 1.05)     # at most 2 retries, each after 1.05 s
 FAST_ANSWER_SECONDS = 1.0                # an attempt slower than this ends the fast regime
-FAST_RETRY_CUTOFF_SECONDS = 4.0          # in the fast regime, no retry starts after this
+FAST_RETRY_CUTOFF_SECONDS = 8.0          # in the fast regime, no retry starts after this
 BUILD_DEADLINE_SECONDS = 270.0           # decide with what was gathered (300 s ceiling)
 POLL_SECONDS_FAST, POLL_SECONDS_SLOW = 1.0, 2.0
 
@@ -120,9 +122,12 @@ class Build:
 
     # ------------------------------------------------------------------ phases
 
+    def queries(self) -> list[str]:
+        return [self.domain, *field_queries(self.domain), company_name(self.domain)]
+
     async def search_all(self) -> list[str]:
         """The lite searches, at once; result URLs in priority order, deduplicated."""
-        queries = [self.domain, *field_queries(self.domain), company_name(self.domain)]
+        queries = self.queries()
         outcomes = await asyncio.gather(*(
             self.call(SEARCH_UNITS, lambda q=q: self.web.search(q)) for q in queries))
         urls: list[str] = []
@@ -133,8 +138,9 @@ class Build:
         return urls
 
     async def extract_all(self, urls: list[str]) -> None:
-        """Extract the URLs at once, keeping enough budget for a research run."""
-        allowance = max(0, self.budget.remaining - RESEARCH_UNITS) // EXTRACT_UNITS
+        """Extract the URLs at once, within what the searches and research leave."""
+        allowance = (self.budget.cap - SEARCH_UNITS * len(self.queries())
+                     - RESEARCH_UNITS) // EXTRACT_UNITS
         chosen = urls[:allowance]
 
         async def one(rank: int, url: str) -> None:
@@ -145,9 +151,6 @@ class Build:
                                                      PROVIDER, rank * 100_000 + index))
 
         await asyncio.gather(*(one(rank, url) for rank, url in enumerate(chosen)))
-
-    def unknown_fields(self) -> set[str]:
-        return set(FIELDS) - {c.field for c in self.candidates}
 
     async def research(self) -> None:
         """One research run for all six fields, polled until done or the deadline."""
@@ -173,10 +176,10 @@ class Build:
             await asyncio.sleep(POLL_SECONDS_FAST if self.fast else POLL_SECONDS_SLOW)
 
     async def gather(self) -> None:
-        urls = await self.search_all()
-        await self.extract_all(urls)
-        if self.unknown_fields() and self.budget.remaining >= RESEARCH_UNITS:
-            await self.research()
+        async def pages() -> None:
+            await self.extract_all(await self.search_all())
+
+        await asyncio.gather(pages(), self.research())
 
     async def run(self) -> dict | None:
         """Gather within the deadline; the decided fields, or None if the build failed."""
