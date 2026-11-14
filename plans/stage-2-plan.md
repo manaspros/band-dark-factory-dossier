@@ -257,9 +257,11 @@ V0 -> V12.
   `/dossiers/{domain}/evidence` (registered **before** the stage-1
   `/dossiers/{domain:path}` route), and `GET /dossiers/{domain}` when `Accept` contains
   `text/html`. It also serves `/static/*` with correct content types and
-  `Cache-Control: no-cache`. HTML routes return a static shell with no dossier data and need no
-  bearer token (E19). All dossier data is read by the shell through the authenticated JSON
-  API. An API GET without `text/html` behaves as
+  `Cache-Control: no-cache`. HTML routes (`/`, `/signup`, `/login`, `/contested`, `/dossiers/{domain}` with
+  `Accept: text/html`, `/dossiers/{domain}/evidence`) return one public, data-free shell
+  without a bearer token (E19, lead ruling). Every data read goes through the
+  bearer-authenticated JSON API. `/dossiers/{domain}` without `text/html` stays authenticated
+  JSON, and `/_test/*` stays unauthenticated. An API GET without `text/html` behaves as
   in stage 1.
 - **Rows:** S46, S48, S49.
 - **Proof:** S2 `test_api_and_browser_share_the_dossier_route`; UT for: `Accept:
@@ -276,7 +278,7 @@ V0 -> V12.
     refused and uncertain; `:focus-visible`; fluid layout with no horizontal scroll at
     375 px.
   - `ui/app.js`: a history router for the six routes; the `h()` helper; the shared header with
-    `current-user` and `logout-button`; redirects signed-out users to `/login`.
+    `current-user` and `logout-button`. Without a valid token it redirects to `/login`, except on `/signup` and `/login`. That covers no stored token, and any API read answering 401, which first clears the stored token (E19).
   - `ui/api.js`: fetch wrapper with bearer token from `localStorage`, a 15 s
     AbortController, and outcome classification (ok, refused 4xx, uncertain) (E11).
   - `ui/format.js`: formats values for people (S57).

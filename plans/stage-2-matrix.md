@@ -97,7 +97,7 @@ Column key as in stage 1.
 
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
-| S46 | Routes `/`, `/dossiers/{domain}`, `/dossiers/{domain}/evidence`, `/contested`, `/signup`, `/login` "must be reachable by URL" | Served as a static HTML shell with no dossier data, without a bearer token (E19), by a client-rendered SPA (E8). | S2 `test_routes_are_directly_navigable` | V7 `ui_routes.py` |
+| S46 | Routes `/`, `/dossiers/{domain}`, `/dossiers/{domain}/evidence`, `/contested`, `/signup`, `/login` "must be reachable by URL" | Served as one public, data-free HTML shell without a bearer token (E19, lead ruling), by a client-rendered SPA (E8). Without a valid token the shell sends the user to `/login`. | S2 `test_routes_are_directly_navigable` | V7 `ui_routes.py` |
 | S47 | "Other screens must be reachable through the UI." | No other screens are planned. Navigation links connect all six routes. | RD | V8 |
 | S48 | "The browser and the API share `/dossiers/{domain}`. Return the UI for `Accept: text/html`; API requests without that header receive JSON." | `text/html` anywhere in `Accept` gives the HTML shell, without needing a token. Otherwise the stage-1 JSON handler runs (auth as before). | S2 `test_api_and_browser_share_the_dossier_route` | V7 |
 | S49 | "`/`, `/dossiers/{domain}/evidence` and `/contested` are browser routes; they read the API's dossier data." | No new API endpoints. Evidence reads `GET /dossiers/{domain}`. Contested reads the paginated `GET /dossiers` plus a `GET` per dossier. | RD | V8 |
@@ -297,13 +297,23 @@ Column key as in stage 1.
 - **E15** Read sequence numbers are per screen and per resource. A response that arrives late
   is discarded.
 - **E16** The pending write is keyed by (method, path, body). A new body gets a new key.
-- **E19** (open to lead, from the audit) Auth boundary for HTML. Stage-1 R99 covers the JSON API.
-  The browser routes, including `GET /dossiers/{domain}` with `Accept: text/html`, return
-  the same static shell with no dossier data. A top-level browser navigation cannot carry a
-  bearer header, and the shell reads every dossier through the authenticated API. So no
-  dossier data is served without a valid token. Proof: UT `test_ui_routes.py`: a
-  `text/html` request without a token returns 200 with the shell, and the body contains no
-  domain-specific data; the JSON API without a token is still 401.
+- **E19** (lead ruling, auth boundary) One public, data-free HTML shell is served without a
+  bearer token on these routes:
+  - `/`, `/signup`, `/login`, `/contested`;
+  - `/dossiers/{domain}` with `Accept: text/html`;
+  - `/dossiers/{domain}/evidence`.
+
+  Every data read goes through the bearer-authenticated JSON API (stage-1 R99 unchanged).
+  Without a valid token, the shell sends the user to `/login`, except on `/signup` and
+  `/login` themselves. This happens when no token is stored, or when an API read answers 401;
+  in that case the stored token is cleared first. `/dossiers/{domain}` without `text/html`
+  remains authenticated JSON (401 without a valid token). `/_test/*` remains
+  unauthenticated. Proof:
+  - UT `test_ui_routes.py`: each of the six routes returns 200 HTML without a token, and the
+    body is byte-identical across domains and holds no dossier data; `GET /dossiers/{domain}`
+    without `text/html` and without a token gives 401 JSON.
+  - E2E: opening `/`, `/contested`, `/dossiers/{d}` and `/dossiers/{d}/evidence` with no
+    stored token, or with an unknown one, ends on `/login`.
 - **E17** The migration fixture is produced by running the frozen `stage-1/` service in tests
   (or a recorded export from it) and committed under `stage-2/tests/fixtures/`.
 
