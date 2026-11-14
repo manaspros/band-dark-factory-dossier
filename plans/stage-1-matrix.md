@@ -96,7 +96,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R52 | "A dossier has exactly these six fields" (§4 Fields) | `legal_name`, `hq_city`, `ceo`, `founded_year`, `headcount_range`, `funding_total`. | S `test_build_a_dossier` | U6 |
 | R53 | "`founded_year` Integer"; "`funding_total` Integer ... in whole US dollars" (§4 table) | JSON integers, not strings. | S `test_build_a_dossier` | U5, U6 |
 | R54 | "`headcount_range` String: one of `1-10`, `11-50`, `51-200`, `201-500`, `501-1000`, `1001-5000`, `5001-10000`, `10001+`" (§4) | | S `test_build_a_dossier` | U5 |
-| R55 | "`hq_city` ... the city ..., without region or country" (§4) | The A.4 `hq_city` format (capitalised run right after the phrase) is the extraction rule; no further trimming. | S `test_build_a_dossier` | U5 |
+| R55 | "`hq_city` ... the city ..., without region or country" (§4) | The A.4 `hq_city` format (capitalised run right after the phrase) is the extraction rule; no further trimming. A comma ends the run (`based in Lisbon, Portugal` -> `Lisbon`). A comma-less run (`based in Lisbon Portugal`) yields `Lisbon Portugal` by A.4/A.5. This is in tension with "without region or country", **see C3, flagged for lead**. | S `test_build_a_dossier` (value in expected set only); UT `test_support.py` for the comma case and the C3 case as decided | U5 |
 | R56 | "A string value is written as the supporting excerpt writes it, without surrounding whitespace." (§4) | Value text copied from the excerpt, not from `Facts:` or research `structured`. | S `test_build_a_dossier`; UT `test_support.py` | U5 |
 | R57 | "A headcount the web states as a number, or as a range that fits inside one of the ranges above, has the range that contains it as its value." (§4) | | UT `test_support.py` (`120`, `3,148`, `51-200`) | U5 |
 | R58 | Field shape `{ "value", "status", "citations": [ { "url", "excerpt", "provider" } ] }` (§4) | | S `test_build_a_dossier` (`assert_dossier`) | U6, U8 |
@@ -173,7 +173,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R114 | "Unknown fields are ignored (§3.5) and play no part in this comparison" (§7) | `POST /dossiers` projection = `{"domain": <raw value or absent>}`. | NOT EXERCISED -> UT | U8 |
 | R115 | "`POST /dossiers/{domain}/refresh` takes no body; any body sent to it is ignored and plays no part in deciding a replay." (§7) | Refresh never parses the body (even invalid JSON is fine) (D21). | NOT EXERCISED -> UT | U8 |
 | R116 | "For concurrent identical requests with an unused key, exactly one returns the normal response. The others return 200 with the same body. The operation takes effect only once." (§7) | Check-and-store with no `await` in between on one event loop. | NOT EXERCISED -> UT `asyncio.gather` of 20 identical requests via ASGI client | U8 |
-| R117 | "A successful replay returns the original response, even after the dossier has changed. It starts no build and makes no provider call." (§7) | | S `test_replay_is_200` (immediate only); later-change NOT EXERCISED -> UT | U8 |
+| R117 | "A successful replay returns the original response, even after the dossier has changed. It starts no build and makes no provider call." (§7) | | S `test_replay_is_200` (immediate only; does not count builds or calls). NOT EXERCISED for "after change" and "no build, no provider call" -> UT `test_idempotency.py::replay_after_change_starts_nothing`: build, refresh, settle, then replay the original POST and the original refresh. Assert the original bodies, that the fake web's call count is unchanged, that the store's build-start counter is unchanged, and that `spent_units` is unchanged. Verifier: the mock `/calls` log length is unchanged across a replay | U8 |
 | R118 | "After the body has parsed as a JSON object and the caller is authenticated, an already claimed key is resolved before field validation." (§7) | Order: auth -> key header -> body parse -> key lookup -> field validation (D22). | NOT EXERCISED -> UT | U8 |
 | R119 | "changing a successful request to an invalid body with the same key still returns `409 idempotency_key_reuse`." (§7) | | NOT EXERCISED -> UT | U8 |
 
@@ -318,6 +318,15 @@ is larger. A row marked with a supplied check may still have cases those checks 
   the plan accepts this residual case rather than failing a build whose other calls succeeded.
   If every call in the build is refused, retries stop after 3 and the build is `failed`, which
   matches R124.
+- **C3 (R55 vs R201/R209/R181)**: §4 says `hq_city` is the city "without region or country".
+  Appendix A, which §4 and A itself call "the whole definition" of support, makes the value
+  the longest run of capitalised words after the phrase, "the text as the excerpt writes it".
+  For `headquartered in Lisbon Portugal` (no comma), A.4/A.5 give `Lisbon Portugal`. The plan
+  follows Appendix A: it is the only rule that decides support, and a trimmed `Lisbon` would
+  not be the value the excerpt states under A.4. Trimming would also need a list of countries
+  and regions, which the spec does not supply. A comma (`Lisbon, Portugal`) ends the run, so
+  the common form gives `Lisbon`. **Flagged for lead** as a spec ambiguity. If lead rules for
+  trimming, the change is confined to `support.py`'s `hq_city` value function plus its test.
 
 ## Decision log
 

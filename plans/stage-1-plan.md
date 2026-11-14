@@ -290,7 +290,9 @@ split between writers without collisions. Build order is U1 -> U11.
 - **Rows:** R46, R50, R51, R81, R83, R84, R89, R100, R103-R123, R132-R144, R146, R180.
 - **Proof:** supplied S/D tests; UT `test_idempotency.py` through Starlette's `TestClient`
   plus `asyncio.gather` on an ASGI client. Cases: replay 200 equal body; replay after a
-  refresh changed the state still returns the original; 409 on a different domain; 409 when
+  refresh changed the state still returns the original, *and* a replay of the original POST
+  and of the original refresh leaves the fake web's call count, the store's build-start
+  counter and `spent_units` unchanged (R117); 409 on a different domain; 409 when
   the replay body is invalid (`{"domain": 5}`) after a success; key reuse after a 422 is a
   first use; the same key on POST and on refresh does not interact; two users with the same
   key; `Acme.test` vs `acme.test` with one key gives 409; unknown fields do not affect replay;
