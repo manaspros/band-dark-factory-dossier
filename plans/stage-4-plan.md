@@ -265,9 +265,22 @@ because later items import earlier ones.
   - **Research failure (F72):** `research_urls()` counts consecutive failed polls (a refused
     or lost poll, not a 429). After 3 it gives up and returns `[]`. A 429 poll waits off the
     clock as today.
-  - **Research affordability:** start research only when `budget.remaining ≥ RESEARCH_UNITS +
-    RENDER_UNITS` after the searches have reserved. Otherwise skip it, which matters only
-    under a small batch share (see Spend).
+  - **Research affordability and the claim-page reserve (F98, cycle-2 finding; carries the
+    stage-2 S25 reserve):**
+    - Research starts only when, after the searches have reserved, the build can take
+      `RESEARCH_UNITS + CLAIM_RESERVE` = 25 + 18 = 43 units from **both** its own cap and the
+      batch budget. 18 = 6 distinct claim URLs × 3, since research asks for six fields.
+    - The 25 units are a normal call reservation. The 18 units are a **hold**
+      (`Budget.hold(18)`), which lowers what both levels can lend to any other call, of this
+      build or of another build in the batch. This means other builds cannot starve this
+      build's claim pages while the research runs.
+    - Claim-page renders draw from the hold. Any unused part is released once the claim pages
+      are reserved, or when research gives up or returns no claims.
+    - A hold is not a call: it is not written to `running.spent` (U7), never counts as spend,
+      and a hold that does not fit does **not** set the batch's `exhausted` flag. In that case
+      the build simply skips research and goes on with search pages.
+    - A non-batch build always fits: 80 − 10 searches = 70 ≥ 43. A batch share below 53
+      skips research.
   - **Outcome (D4-10, lead ruling 1):** `build_outcome(succeeded, stopped_by_batch_budget)`
     returns `ready` when some call succeeded or the batch budget stopped the build, and
     `failed` otherwise. The Batches text overrides §8 for budget exhaustion only: a batch
@@ -304,6 +317,13 @@ because later items import earlier ones.
   - batch budget 30 with 3 builds → total ≤ 30 and exhausted stops further calls;
   - budget 1 with 2 domains → the second build makes 0 calls and ends `ready`, all fields
     unknown;
+  - `test_budget.py::claim_reserve`:
+    - a batch of 2 domains with budget 106 (share 53): research runs in each build, the six
+      claims cite six distinct URLs, and all six claim pages are rendered in each build,
+      while the other build's search-page renders run concurrently;
+    - the same with budget 104 (share 52): research is skipped (no research call, no hold
+      leaks) and `exhausted` stays false;
+    - a hold never appears in `running.spent` or `spent_units`;
   - a batch build whose calls all 503 → `failed`;
   - a lost call is charged.
 - **Edges:**
@@ -479,7 +499,7 @@ Per build, every call and why it can change a field:
 | Lite search: executive titles | 1 | Executives come only from pages (research never asks for them) |
 | Lite search: investors (new) | 1 | Investors come only from pages, and membership needs either an own/filing page or two origins, so it needs a dedicated query |
 | Lite search: company name | 1 | Pages that name the company without its domain (news, filings), which supply second origins |
-| Research run | 25 | Kept by lead ruling; its cited pages are evidence (stage 2). Skipped only when the build's allowance cannot also afford one render (batch shares) |
+| Research run | 25 | Kept by lead ruling; its cited pages are evidence (stage 2). Started only with a held 18-unit claim reserve; skipped when the build's allowance cannot fit 25 + 18 after searches (batch shares below 53) (F98) |
 | Rendered extract, claim pages | 3 each | Required: claim-cited pages are evidence |
 | Rendered extract, originals | 3 each | Only for pages with candidates, needing rule 2, not already rendered, and at most 3 hops. Each changes `origin`, so `origins`/`corroborated`/investors membership |
 | Rendered extract, search pages | 3 each | In priority order (snippet states a value, own host, URL) until the cap |
@@ -532,7 +552,7 @@ Every row maps to a work item:
 | F86 | U5 |
 | F87-F88 | U11 |
 | F89-F96 | listed items |
-| F97 | U5 |
+| F97-F98 | U5 |
 
 ## Cycle-1 audit resolution (plan-checker findings on 0ade905)
 
@@ -545,6 +565,7 @@ Every row maps to a work item:
 | D4-5 `/values` keys | Lead ruling 2: add `origins` and `corroborated` from the candidates at `true_at`; no `corroborated_since` |
 | Served URL of originals | `fetch` returns `Served(url, lineage)`; the served URL drives F8/F11/F13 for originals (D4-16), with a redirect UT |
 | D4-9 | Lead ruling 3: kept |
+| Cycle 2: claim-page reserve | Research needs 25 + an 18-unit hold on both budget levels; the hold is not spend and never sets `exhausted`; new row F98 and test `claim_reserve` |
 | Cycle 2: retry arithmetic | The table is relabelled nominal; with retries one call takes up to 5.1 s. The bound now rests on the guard invariant (every attempt starts ≤ 8.0 s, so it ends ≤ 9.0 s). New test `mixed_retry_chain` |
 
 ## Unverified
