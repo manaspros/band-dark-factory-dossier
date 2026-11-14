@@ -11,6 +11,7 @@ from app.errors import ApiError, invalid, malformed
 
 _DIGITS = re.compile(r"[0-9]+")
 _ABSENT = object()
+_MAX_DIGITS = 18
 
 
 def json_response(status: int, payload) -> Response:
@@ -31,7 +32,7 @@ async def read_json(request: Request):
     raw = await request.body()
     try:
         return json.loads(raw.decode("utf-8-sig"))
-    except (UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError, RecursionError):
         raise malformed("the request body is not valid JSON") from None
 
 
@@ -59,7 +60,10 @@ def query_int(request: Request, name: str, default: int, low: int, high: int | N
         return default
     if not _DIGITS.fullmatch(raw):
         raise invalid(f"{name} must be written as decimal digits")
-    value = int(raw)
+    digits = raw.lstrip("0") or "0"
+    # Very long digit strings are never converted: they stand in as a value beyond every
+    # bound and every list length.
+    value = int(digits) if len(digits) <= _MAX_DIGITS else 10 ** _MAX_DIGITS
     if value < low or (high is not None and value > high):
         raise invalid(f"{name} is out of range")
     return value

@@ -179,3 +179,48 @@ def test_export_import_round_trip(client):
                 {k: v for k, v in exported.items() if k != "state"}):
         assert client.post("/_test/import", json=bad).status_code == 422
     assert client.get("/_test/export").json() == exported
+
+
+def test_huge_integer_query_parameter_is_422(client):
+    h = login(client)
+    r = client.get("/dossiers?limit=" + "9" * 5000, headers=h)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "validation_failed"
+    assert client.get("/dossiers?offset=" + "1" * 5000, headers=h).status_code == 200
+
+
+def test_clock_needs_full_rfc3339(client):
+    for bad in ("2026-03-01T09:30+00:00", "2026-03-01 09:30:00+00:00", "2026-03-01T09:30:00",
+                "20260301T093000+00:00", "2026-03-01T09:30:00+0000", 5):
+        r = client.post("/_test/clock", json={"now": bad})
+        assert r.status_code in (400, 422), bad
+    for good in ("2026-03-01T09:30:00Z", "2026-03-01t09:30:00.25z", "2026-03-01T11:30:00.5+02:00"):
+        assert client.post("/_test/clock", json={"now": good}).status_code == 204, good
+
+
+def test_import_with_wrong_types_is_422_and_changes_nothing(client):
+    exported = client.get("/_test/export").json()
+
+    def with_state(**changes):
+        return {**exported, "state": {**exported["state"], **changes}}
+
+    for bad in (with_state(tokens=[{"token_sha256": "a", "user_id": []}]),
+                with_state(tokens=[{"token_sha256": "a", "user_id": {}}]),
+                with_state(idempotency=[{"user_id": [], "method": "POST", "path": "/dossiers",
+                                         "key": "k", "fingerprint": "{}", "status": 202,
+                                         "body": {}}]),
+                with_state(dossiers=[{"dossier_id": "d_1", "domain": "not a domain",
+                                      "state": "ready", "fields": {}, "researched_at": None,
+                                      "spent_units": 0}]),
+                with_state(users=[{"id": ["x"]}])):
+        r = client.post("/_test/import", json=bad)
+        assert r.status_code == 422, r.text
+    assert client.get("/_test/export").json() == exported
+
+
+def test_deeply_nested_body_is_400(client):
+    h = login(client)
+    deep = b"[" * 100_000 + b"]" * 100_000
+    for path, headers in (("/auth/signup", {}), ("/_test/import", {}),
+                          ("/dossiers", {**h, "Idempotency-Key": "deep"})):
+        r = client.post(path, content=deep, headers={"content-type": "application/json", **headers})
+        assert r.status_code == 400, (path, r.status_code)

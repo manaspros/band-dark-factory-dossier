@@ -10,6 +10,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass, field
 
+from app.domains import is_valid as is_valid_domain
 from app.errors import invalid
 from app.evidence import empty_fields
 from app.support import FIELDS
@@ -123,6 +124,10 @@ def _is_int(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _is_user(state: State, value) -> bool:
+    return isinstance(value, str) and value in state.users
+
+
 def _valid_field(name: str, value) -> bool:
     if not isinstance(value, dict) or set(value) != {"value", "status", "citations"}:
         return False
@@ -158,12 +163,13 @@ def import_state(payload) -> State:
         state.add_user(User(u["id"], u["email"], u["display_name"], u["password_hash"]))
     for t in raw["tokens"]:
         _require(isinstance(t, dict) and _is_str(t.get("token_sha256"), min_len=1)
-                 and t.get("user_id") in state.users, "token")
+                 and _is_user(state, t.get("user_id")), "token")
         state.tokens[t["token_sha256"]] = t["user_id"]
     dossier_ids = set()
     for d in raw["dossiers"]:
         _require(isinstance(d, dict) and _is_str(d.get("dossier_id"), 64, 1)
-                 and _is_str(d.get("domain"), min_len=1) and d.get("state") in ("ready", "failed")
+                 and _is_str(d.get("domain")) and is_valid_domain(d["domain"])
+                 and d.get("state") in ("ready", "failed")
                  and (d.get("researched_at") is None or _is_str(d.get("researched_at")))
                  and _is_int(d.get("spent_units")) and d["spent_units"] >= 0
                  and isinstance(d.get("fields"), dict) and set(d["fields"]) == set(FIELDS)
@@ -174,7 +180,7 @@ def import_state(payload) -> State:
         state.dossiers[d["domain"]] = Dossier(d["dossier_id"], d["domain"], d["state"],
                                               d["fields"], d["researched_at"], d["spent_units"])
     for r in raw["idempotency"]:
-        _require(isinstance(r, dict) and r.get("user_id") in state.users
+        _require(isinstance(r, dict) and _is_user(state, r.get("user_id"))
                  and _is_str(r.get("method"), min_len=1) and _is_str(r.get("path"))
                  and _is_str(r.get("key"), 255, 1) and _is_str(r.get("fingerprint"))
                  and _is_int(r.get("status")) and isinstance(r.get("body"), dict),
