@@ -33,7 +33,7 @@ Starlette app (main.py)
   + ui/            index.html, styles.css, app.js (router), api.js, format.js, reader.js,
   |                list.js, dossier.js, evidence.js, contested.js, auth.js
 build.py (changed)  searches + research -> page queue -> reader -> candidates -> selection
-  + reader.py      page pipeline: snippet screen -> plain-extract screen -> NimbleRenderReader
+  + reader.py      page pipeline: claim pages, then priority-ordered search pages -> NimbleRenderReader
   (+ sessions.py   Kernel pool, only if V1b is triggered)
   + pages.py       kind / published_at from header lines (S3-S6)
   + candidates.py  page text -> candidates (field, value, url, excerpt, provider, kind, published_at)
@@ -58,27 +58,22 @@ DOM rendering is hand-written. To keep that manageable, each screen module expor
 | A (at once) | 8 lite searches (exact domain + 6 field queries + company name), as stage 1 | 8 |
 | A (at once) | research run, all six fields (S117, confirmed) | 25 |
 | B1 | rendered extract of research-cited URLs (as soon as research completes) | 3 each |
-| B2 | **render-all check:** if every distinct search URL fits the budget left after the claim reserve (`3 x URLs <= remaining`), skip B3 and render every page (no screening) | 0 |
-| B3 | only when B2 fails: an ordering screen. A free snippet check, then a plain extract (served text, never cited) of the URLs whose snippet is inconclusive, while `screens + 3 x renders` still fits. The screen only **orders** pages; it never drops one | 0 or 1 each |
-| B4 | rendered extract in order: screened-in pages (by field-query top-3 hits), then screened-out pages, then unscreened pages, until the budget is spent | 3 each |
+| B2 | order the distinct search URLs (no probe calls, lead ruling on E3): (1) snippet contains a supporting sentence; (2) the rest by authority hint, i.e. a `Kind:` header when the page's text is already known (not the case for an unread page), else same host as the company domain first; (3) then by URL (code point) | 0 |
+| B3 | rendered extract down that order (3 each) until the 80-unit cap leaves room for no more; every rendered page is read in full. URLs not reached are logged as the budget limit DEV-S2 | 3 each |
 | C | candidates from rendered text only -> selection -> fields | 0 |
 
 - **Budget split (S25):** research asks for six fields, so it can cite at most six distinct
   pages. Of the 47 units left after step A, 18 (six renders) stay reserved for research-cited
-  pages, which leaves at most 29 units for B3 screens before research completes. Search-page
-  renders (B4) do not start until research has completed (or failed, or hit the deadline).
-  At that point B1 renders every distinct claim URL not already rendered, and only then does
-  the remainder go to B4. So every claim page is always affordable, and the exact reserve is
-  known before any search page is rendered. A claim URL that is also a search URL is rendered
-  once. Unused reserve returns to B4. B3 is skipped for a URL when its B4 render could no
-  longer be afforded.
-- **Screening only orders pages (E3):** a page's browser text can carry a fact its plain served
-  text lacks. So screening never removes a page; it only decides which pages are rendered first
-  when the budget cannot render them all. When it can (B2), every page is rendered and nothing
-  can be missed. When it cannot, some pages go unrendered whatever the method. In that case the
-  screen spends the budget on pages most likely to carry candidates, and screened-out pages are
-  still rendered while budget remains. The residual, a browser-only fact on a page the budget
-  could not reach, is conflict **C-S3**, open for a lead ruling.
+  pages. Search-page renders (B3) do not start until research has completed (or failed, or
+  hit the deadline). At that point B1 renders every distinct claim URL, and only then does
+  the remainder go to B3. So every claim page is always affordable. A claim URL that is also
+  a search URL is rendered once. Unused reserve returns to B3.
+- **No probe, render in priority order (E3, lead ruling):** a page's text is its rendered text.
+  So no page is excluded from rendering because its plain text or snippet lacks a supporting
+  sentence. The snippet is used only to order pages. The plain 1-unit extract is not used in
+  stage 2. The only legitimate loss is a page the budget does not reach. Each build logs that
+  as the documented budget limit DEV-S2, with the count of unreached URLs at INFO level and no
+  URLs or page text in the log.
 - **Kernel (V1b, conditional):** added only if the verifier's harness run shows that
   Nimble-only misses candidates within 80 units. If added, it serves only pages the Nimble
   pipeline could not afford. Nimble-only behaviour is unchanged when Kernel is absent,
@@ -93,9 +88,9 @@ DOM rendering is hand-written. To keep that manageable, each screen module expor
   429-wait intervals. The stage-1 fast-regime cut-off reads this clock, and 429 retries are
   exempt from the cut-off.
 - **Timing check:** with calls of 1 s or less, the steps run in sequence: step A (about 1 s
-  for searches, about 3 s for research in parallel), then B3 all at once (about 1 s), then B4
-  all at once (about 1 s), then the research-cited renders (about 1 s). That is about 5-6 s,
-  plus excluded 429 waits.
+  for searches, about 3 s for research in parallel), then the research-cited renders (about
+  1 s), then the search-page renders all at once (about 1 s). That is about 5 s, plus excluded
+  429 waits.
 
 ## Work items
 
@@ -117,7 +112,7 @@ V0 -> V12.
     plain `extract` (`stage-1/app/web.py:102-108`) is kept for screening. `classify_failure`
     reports `refused_429` separately.
   - `budget.py`: the new costs (S15-S17).
-  - `reader.py`: the B1-B4 pipeline (E3), returning `PageText(url, text, provider="nimble")`
+  - `reader.py`: the B1-B3 pipeline (E3), returning `PageText(url, text, provider="nimble")`
     for rendered pages only.
   - `build.py`: the call wrapper with 429 handling (3 retries, 1.05 s) and other refusals
     (2 retries), and the effective clock (S23).
@@ -125,11 +120,13 @@ V0 -> V12.
 - **Proof:**
   - UT `test_reader.py` with a fake router:
     - research-cited pages are rendered first;
-    - a supporting snippet skips the screen;
-    - with URLs that fit the budget, every page is rendered and no screen call is made (B2);
-    - a page whose plain text has no statement but whose browser text has one is rendered and
-      yields its candidate whenever the budget allows (B2, or B4 after the screened-in pages);
-    - a screened-out page is rendered while budget remains after the screened-in pages;
+    - no plain extract is ever called;
+    - priority order: claim pages, then snippet-supported URLs, then company-host URLs, then
+      the rest, ties broken by URL;
+    - a page whose snippet has no statement but whose browser text has one is rendered and
+      yields its candidate whenever the budget reaches it;
+    - rendering continues until fewer than 3 units remain, and the unreached count is logged
+      (DEV-S2);
     - a static-vs-browser text mismatch yields candidates only from browser text;
     - the budget never exceeds 80.
   - UT `test_rate_limit.py`:
@@ -139,8 +136,8 @@ V0 -> V12.
     - the effective clock excludes 429 waits.
   - UT `test_budget.py`: the new costs.
   - The verifier runs the harness Nimble-only and compares candidate value sets with the
-    expected sets (Open-S4).
-- **Edges:** an empty search; every page screened out; render failures (charged, not retried
+    expected sets (the DEV-S2 budget limit; decides V1b).
+- **Edges:** an empty search; more URLs than the budget can render (unreached ones logged); render failures (charged, not retried
   unless refused); a reset during a build (generation check, R31).
 - **Files:** `stage-2/app/{web,budget,reader}.py`, the call and gather parts of
   `stage-2/app/build.py`, and `stage-2/tests/test_{reader,rate_limit,budget}.py`.
@@ -384,8 +381,10 @@ are carried by V0.
    build clock. Other refusals keep the cap of 2. The exact-domain search keeps 3 attempts for
    non-429 refusals.
 3. **C-S2:** confirmed. Research runs in every build.
-4. **Kernel:** Nimble rendered extract is primary and complete on its own (E3). Kernel is added
-   only via V1b, if the harness shows it is needed.
+4. **Kernel:** Nimble rendered extract is the primary path (E3). Kernel is added only via V1b, if a
+   Nimble-only harness run shows that it is needed (it reaches more pages at 1 unit each).
+5. **E3 ruling:** there is no probe filter. Rendered extracts run in priority order until the
+   cap, and pages the budget does not reach are the documented budget limit DEV-S2.
 
 ## Unverified
 
