@@ -1,0 +1,4 @@
+# Unit tests only; not installed in the image.
+-r requirements.txt
+pytest==9.2.0
+httpx==0.28.1
