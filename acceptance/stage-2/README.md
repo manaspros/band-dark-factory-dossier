@@ -20,8 +20,16 @@ they are reported as skipped, while HTTP checks still cover the public HTML shel
 authenticated JSON boundary.
 
 For browser checks, install Playwright and its browser in a throwaway environment outside
-the repository, then run pytest with that environment's Python. The tests require no
-credentials in the repository.
+the repository, then run pytest with that environment's Python. For example:
+
+```sh
+python -m venv /tmp/dossier-stage2-ui
+/tmp/dossier-stage2-ui/bin/pip install pytest requests playwright
+/tmp/dossier-stage2-ui/bin/python -m playwright install chromium
+DOSSIER_BASE_URL=http://127.0.0.1:8080 /tmp/dossier-stage2-ui/bin/python -m pytest -q acceptance/stage-2
+```
+
+The tests require no credentials in the repository.
 
 Every test's docstring names its matrix row IDs. The table records the principal mapping;
 some tests span several adjacent rows, as noted in their docstrings.
