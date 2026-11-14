@@ -106,7 +106,7 @@ def test_fields_carry_times_and_executives(client):
     body = build(client, h)
     fields = body["fields"]
     assert list(fields) == ["legal_name", "hq_city", "ceo", "founded_year", "headcount_range",
-                            "funding_total", "executives"]
+                            "funding_total", "executives", "investors"]
     assert fields["ceo"]["true_from"] == "2021-04-01" and fields["ceo"]["learned_at"] == T1
     assert fields["legal_name"]["true_from"] is None and fields["legal_name"]["learned_at"] is None
     ex = fields["executives"]
@@ -121,7 +121,7 @@ def test_history_and_feed_change_then_correction(client, web):
     h = three_builds(client, web)
     _, hist = get(client, h, f"/dossiers/{DOMAIN}/history")
     assert list(hist["fields"]) == ["legal_name", "hq_city", "ceo", "founded_year",
-                                    "headcount_range", "funding_total", "executives"]
+                                    "headcount_range", "funding_total", "executives", "investors"]
     assert [(e["type"], e["value"], e["true_from"], e["learned_at"])
             for e in hist["fields"]["ceo"]] == [
         ("initial", "Dana Ruiz", "2021-04-01", T1), ("change", "Lee Park", "2026-03-20", T2),

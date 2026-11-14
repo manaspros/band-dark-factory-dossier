@@ -1,8 +1,10 @@
 """`/_test/export` and `/_test/import` state (§10, stage-3 "Upgrades").
 
-A stage-3 export holds, besides the stage-1 parts, each dossier's builds and history and
-the change feed. Import accepts that shape, and the exports of this team's stage-1 and
-stage-2 services (dossiers without `builds`, no `feed`), which app.migrate upgrades. Import validates the whole
+A stage-4 export holds, besides the stage-1 parts, each dossier's builds and history, the
+change feed and the batches. Import accepts that shape, the stage-3 shape (no `investors`,
+no origins) and the exports of this team's stage-1 and stage-2 services (dossiers without
+`builds`, no `feed`), which app.migrate upgrades. Builds in flight are not exported: an
+export holds each dossier as its last completed build left it. Import validates the whole
 payload first and builds a new ``State``; anything invalid is 422 with nothing changed.
 """
 from __future__ import annotations
@@ -10,9 +12,14 @@ from __future__ import annotations
 from app import restore
 from app.domains import is_valid as is_valid_domain
 from app.errors import invalid
-from app.migrate import import_field, is_rfc3339, upgrade_dossier, valid_field
-from app.store import BuildRecord, Dossier, IdempotencyRecord, State, User, email_key
+from app.migrate import (import_field, is_rfc3339, upgrade_dossier, upgrade_to_stage4,
+                         valid_field)
+from app.store import Batch, BuildRecord, Dossier, IdempotencyRecord, State, User, email_key
 from app.support import FIELDS
+
+MAX_BATCH_DOMAINS = 50
+MAX_BATCH_BUDGET = 100000
+BATCH_KEYS = {"batch_id", "user_id", "budget_units", "domains", "started", "spent_units"}
 
 TRACK = "dossier"
 FORMAT_VERSION = 1
@@ -35,6 +42,7 @@ def export_state(state: State) -> dict:
                          "fingerprint": r.fingerprint, "status": r.status, "body": r.body}
                         for k, r in state.idempotency.items()],
         "feed": state.feed,
+        "batches": [b.as_json() for b in state.batches.values()],
     }
 
 
@@ -66,13 +74,17 @@ def _common_dossier(d) -> bool:
 
 
 def _stage3_dossier(d) -> Dossier:
+    """A dossier of a stage-3 or stage-4 export (both keep builds), in stage 4."""
+    shape = restore.shape_of(d)
     _require(_common_dossier(d) and set(d) == STAGE3_DOSSIER_KEYS
-             and restore.valid_fields(d["fields"], d["domain"])
-             and restore.valid_dossier_times(d)
-             and restore.valid_history(d["history"], d["domain"]), "dossier")
-    return Dossier(d["dossier_id"], d["domain"], d["state"], d["fields"], d["researched_at"],
-                   d["spent_units"], [BuildRecord.from_json(b) for b in d["builds"]],
-                   d["history"])
+             and restore.valid_fields(d["fields"], d["domain"], shape)
+             and restore.valid_dossier_times(d, shape)
+             and restore.valid_history(d["history"], d["domain"], shape), "dossier")
+    fields, builds, history = d["fields"], d["builds"], d["history"]
+    if not shape.stage4:
+        fields, builds, history = upgrade_to_stage4(builds, history)
+    return Dossier(d["dossier_id"], d["domain"], d["state"], fields, d["researched_at"],
+                   d["spent_units"], [BuildRecord.from_json(b) for b in builds], history)
 
 
 def _earlier_dossier(d) -> Dossier:
@@ -84,7 +96,8 @@ def _earlier_dossier(d) -> Dossier:
                   or all(v["value"] is None for v in d["fields"].values())), "dossier")
     fields = {name: import_field(name, value, d["researched_at"])
               for name, value in d["fields"].items()}
-    fields, builds, history = upgrade_dossier(fields, d["researched_at"], d["spent_units"])
+    _, builds, history = upgrade_dossier(fields, d["researched_at"], d["spent_units"])
+    fields, builds, history = upgrade_to_stage4(builds, history)
     return Dossier(d["dossier_id"], d["domain"], d["state"], fields, d["researched_at"],
                    d["spent_units"], [BuildRecord.from_json(b) for b in builds], history)
 
@@ -130,4 +143,26 @@ def import_state(payload) -> State:
                  "idempotency record")
         state.idempotency[(r["user_id"], r["method"], r["path"], r["key"])] = IdempotencyRecord(
             r["fingerprint"], r["status"], r["body"])
+    batches = raw.get("batches", [])   # earlier exports have none
+    _require(isinstance(batches, list), "batches")
+    for b in batches:
+        _require(_valid_batch(state, b), "batch")
+        state.batches[b["batch_id"]] = Batch.from_json(b)
     return state
+
+
+def _valid_batch(state: State, b) -> bool:
+    """A batch of an imported user over imported dossiers, its spending within its budget."""
+    if not (isinstance(b, dict) and set(b) == BATCH_KEYS and _is_str(b["batch_id"], 64, 1)
+            and b["batch_id"] not in state.batches and b["batch_id"] not in state.users
+            and all(b["batch_id"] != d.id for d in state.dossiers.values())
+            and _is_user(state, b["user_id"])
+            and _is_int(b["budget_units"]) and 1 <= b["budget_units"] <= MAX_BATCH_BUDGET
+            and _is_int(b["spent_units"]) and 0 <= b["spent_units"] <= b["budget_units"]
+            and isinstance(b["domains"], list) and isinstance(b["started"], list)):
+        return False
+    domains, started = b["domains"], b["started"]
+    return (1 <= len(domains) <= MAX_BATCH_DOMAINS
+            and all(_is_str(x) and x in state.dossiers for x in domains + started)
+            and len(set(domains)) == len(domains) and len(set(started)) == len(started)
+            and set(started) <= set(domains))

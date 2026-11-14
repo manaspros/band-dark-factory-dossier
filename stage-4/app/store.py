@@ -89,6 +89,43 @@ class Dossier:
 
 
 @dataclass
+class Batch:
+    """A batch of builds under one shared budget (stage-4 "Batches")."""
+    id: str
+    user_id: str
+    budget_units: int
+    domains: list[str]               # normalised, in the order given
+    started: list[str]               # the domains whose first build the batch started
+    spent_units: int = 0             # durable: units reserved by its builds (app.budget)
+    budget: object | None = None     # app.budget.BatchBudget while this process runs it
+
+    def as_json(self) -> dict:
+        return {"batch_id": self.id, "user_id": self.user_id, "budget_units": self.budget_units,
+                "domains": self.domains, "started": self.started,
+                "spent_units": self.spent_units}
+
+    @classmethod
+    def from_json(cls, data: dict) -> "Batch":
+        return cls(data["batch_id"], data["user_id"], data["budget_units"], data["domains"],
+                   data["started"], data["spent_units"])
+
+    def spent(self) -> int:
+        """Units its builds' provider calls cost: settled charges while it runs here, else
+        the durable count (which may include calls in flight at a stop)."""
+        return self.budget.charged if self.budget is not None else self.spent_units
+
+    def running(self, state: "State") -> bool:
+        return any(getattr(state.dossiers[d].build, "batch_id", None) == self.id
+                   for d in self.started if d in state.dossiers)
+
+    def view(self, state: "State") -> dict:
+        return {"batch_id": self.id, "state": "running" if self.running(state) else "done",
+                "budget_units": self.budget_units, "spent_units": self.spent(),
+                "dossiers": [{"domain": d, "state": state.dossiers[d].state()
+                              if d in state.dossiers else "failed"} for d in self.domains]}
+
+
+@dataclass
 class IdempotencyRecord:
     fingerprint: str
     status: int
@@ -103,9 +140,10 @@ class State:
     dossiers: dict[str, Dossier] = field(default_factory=dict)    # domain -> dossier
     idempotency: dict[tuple, IdempotencyRecord] = field(default_factory=dict)
     feed: list[dict] = field(default_factory=list)                # change feed, by seq
+    batches: dict[str, Batch] = field(default_factory=dict)       # id -> batch
 
     def new_id(self, prefix: str) -> str:
-        taken = set(self.users) | {d.id for d in self.dossiers.values()}
+        taken = set(self.users) | {d.id for d in self.dossiers.values()} | set(self.batches)
         while True:
             candidate = f"{prefix}_{secrets.token_hex(8)}"
             if candidate not in taken:
@@ -171,4 +209,21 @@ def load_state(db: Database) -> State:
             "ORDER BY rowid"):
         state.idempotency[(user_id, method, path, key)] = IdempotencyRecord(
             print_, status, json.loads(body))
+    for (batch,) in db.rows("SELECT batch FROM batches ORDER BY rowid"):
+        loaded = Batch.from_json(json.loads(batch))
+        state.batches[loaded.id] = loaded
     return state
+
+
+@dataclass(frozen=True)
+class Interrupted:
+    """A build that was in flight when the service last stopped (app.commit recovers it)."""
+    dossier_id: str
+    build_time: str
+    batch_id: str | None
+    spent: int
+
+
+def interrupted_builds(db: Database) -> list[Interrupted]:
+    return [Interrupted(*row) for row in db.rows(
+        "SELECT dossier_id, build_time, batch_id, spent FROM running ORDER BY rowid")]

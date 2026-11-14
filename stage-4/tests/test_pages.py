@@ -9,7 +9,10 @@ D = "acme-robotics.test"
 
 @pytest.mark.parametrize("kind", ["own", "filing", "news", "aggregator"])
 def test_listed_kinds(kind):
-    assert page_kind("https://x.test/a", f"Kind: {kind}\n\nBody.", D) == kind
+    # stage 4: `own` only for a page registered to the company's domain
+    expected = "aggregator" if kind == "own" else kind
+    assert page_kind("https://x.test/a", f"Kind: {kind}\n\nBody.", D) == expected
+    assert page_kind(f"https://{D}/a", f"Kind: {kind}\n\nBody.", D) == kind
 
 
 @pytest.mark.parametrize("url, text, kind", [

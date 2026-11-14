@@ -25,11 +25,13 @@ from dataclasses import replace
 
 from app.clock import parse_rfc3339
 from app.errors import ApiError
-from app.fields import ALL_FIELDS, decide, field_candidates
+from app.corroboration import corroborated_since
+from app.errors import invalid
+from app.fields import ALL_FIELDS, decide, decide_one, empty_fields, field_candidates
 from app.history import history_entry
-from app.pages import KINDS, utc_date
+from app.pages import KINDS, _host_domain, utc_date
 from app.selection import PROVIDER_ORDER, Candidate, decide_field
-from app.support import HEADCOUNT_RANGES, MAX_EXCERPT_CHARS, supports
+from app.support import HEADCOUNT_RANGES, INVESTORS, MAX_EXCERPT_CHARS, supports_value
 
 STAGE1_KEYS = {"value", "status", "citations"}
 STAGE2_KEYS = STAGE1_KEYS | {"candidates"}
@@ -87,7 +89,7 @@ def excerpt_supports(excerpt: str, field: str, value, domain: str) -> bool:
     """Whether ``excerpt`` alone states ``value`` for ``field`` of the company at ``domain``
     (Appendix A: a single sentence naming the company, with a statement phrase, no
     negation, and every value in the field's format normalising to ``value``)."""
-    return supports(excerpt, field, domain) == value
+    return supports_value(excerpt, field, value, domain)
 
 
 def _valid_candidate(field: str, c, domain: str) -> bool:
@@ -99,7 +101,8 @@ def _valid_candidate(field: str, c, domain: str) -> bool:
             and excerpt_supports(c["excerpt"], field, c["value"], domain))
 
 
-_STAGE3_KEYS = ("true_from", "learned_at")
+_STAGE3_KEYS = ("true_from", "learned_at", "origin", "origins", "corroborated",
+                "corroborated_since")
 
 
 def _stage2_view(field: dict) -> dict:
@@ -171,3 +174,40 @@ def upgrade_dossier(fields: dict, researched_at: str | None, spent_units: int):
              "fields": upgraded,
              "pages": [{"url": url, "true_from": tf} for url, tf in pages.items()]}
     return upgraded, [build], history
+
+
+def _host_origin(url: str) -> str:
+    """An imported candidate's origin when its export records none: its URL's host (422
+    when the URL has no valid host, D4-7)."""
+    host = _host_domain(url)
+    if host is None:
+        raise invalid("invalid state: a candidate URL has no valid host")
+    return host
+
+
+def _upgrade_fields(fields: dict, earlier: list[tuple[str, dict]], time: str) -> dict:
+    """A ready build's stage-3 fields in stage 4: candidates take their URL's host as
+    origin; `investors` is unknown; each field gains its corroboration keys."""
+    upgraded = {}
+    for name in ALL_FIELDS:
+        candidates = [replace(Candidate.from_json(name, c), origin=_host_origin(c["url"]))
+                      for c in fields[name]["candidates"]] if name in fields else []
+        field = {**decide_one(name, candidates),
+                 "learned_at": fields[name]["learned_at"] if name in fields else None}
+        walk = [(t, snapshot[name]) for t, snapshot in earlier] + [(time, field)]
+        upgraded[name] = {**field, "corroborated_since": corroborated_since(name, walk)}
+    return upgraded
+
+
+def upgrade_to_stage4(builds: list[dict], history: dict) -> tuple[dict, list[dict], dict]:
+    """(fields, builds, history) of a validated stage-3 dossier (or an upgraded stage-1/2
+    one) in stage 4. Each ready build's candidates count as gathered at its time."""
+    earlier: list[tuple[str, dict]] = []
+    upgraded_builds = []
+    for build in builds:
+        if build["outcome"] == "ready":
+            build = {**build, "fields": _upgrade_fields(build["fields"], earlier, build["time"])}
+            earlier.append((build["time"], build["fields"]))
+        upgraded_builds.append(build)
+    fields = earlier[-1][1] if earlier else empty_fields()
+    return fields, upgraded_builds, {**history, INVESTORS: []}

@@ -44,6 +44,13 @@ TITLE_PHRASES: dict[str, tuple[str, ...]] = {
 }
 _PHRASES = {**STATEMENT_PHRASES, **TITLE_PHRASES}
 
+# Stage-4 investors: statement phrases, and the last words that make a run an investor name.
+INVESTORS = "investors"
+INVESTOR_PHRASES = ("investor", "investors", "led by", "backed by", "participated")
+INVESTOR_SUFFIXES = ("Ventures", "Capital", "Partners", "Fund", "Investments", "Holdings",
+                     "Equity")
+_LEAD_PHRASES = ("led by", "backed by")
+
 # A.3 negating phrases, verbatim.
 NEGATING_PHRASES = ("in talks to", "plans to", "planning to", "wants to", "expects to",
                     "hopes to", "aims to", "seeking", "could", "would", "might", "reportedly",
@@ -396,6 +403,48 @@ def _person_names(text: str, folded: str, domain: str, phrases: tuple[str, ...])
     return values
 
 
+def _runs(text: str, words: list[_Span]) -> list[list[_Span]]:
+    """Maximal runs of ``words`` joined by single spaces."""
+    runs: list[list[_Span]] = []
+    for word in words:
+        if runs and text[runs[-1][-1].end:word.start] == " ":
+            runs[-1].append(word)
+        else:
+            runs.append([word])
+    return runs
+
+
+def investor_names(excerpt: str, domain: str) -> list[str]:
+    """Every investor name ``excerpt`` supports for the company at ``domain`` (stage-4
+    "Investors"), in sentence order: A.2 rules 1-4, then the runs of capitalised words left
+    once the company's name and the statement phrases are taken out."""
+    text = collapse(excerpt)
+    if not text or not is_single_sentence(text):
+        return []
+    folded = _fold(text)
+    if not (_find_phrase(folded, company_name(domain)) or _find_phrase(folded, domain)):
+        return []
+    phrase_spans = [span for p in INVESTOR_PHRASES for span in _find_phrase(folded, p)]
+    if not phrase_spans or any(_find_phrase(folded, p) for p in NEGATING_PHRASES):
+        return []
+    removed = _find_phrase(folded, company_name(domain)) + phrase_spans
+    kept = [w for w in _capitalised_words(text)
+            if all(w.end <= s or w.start >= e for s, e in removed)]
+    runs = _runs(text, kept)
+    found: dict[int, str] = {}
+    for run in runs:
+        if len(run) >= 2 and text[run[-1].start:run[-1].end] in INVESTOR_SUFFIXES:
+            found[run[0].start] = text[run[0].start:run[-1].end]
+    if _amounts(text):  # the run directly after `led by` / `backed by` and one space
+        starts = {run[0].start: run for run in runs}
+        for phrase in _LEAD_PHRASES:
+            for _, end in _find_phrase(folded, phrase):
+                run = starts.get(end + 1)
+                if run is not None and text[end] == " ":
+                    found[run[0].start] = text[run[0].start:run[-1].end]
+    return list(dict.fromkeys(found[start] for start in sorted(found)))
+
+
 def _years(text: str) -> set:
     amounts = _amounts(text)
     return {int(n.text) for n in _numbers(text)
@@ -476,8 +525,15 @@ class Support:
     excerpt: str
 
 
+def supports_value(excerpt: str, field: str, value, domain: str) -> bool:
+    """Whether ``excerpt`` supports ``value`` for ``field`` (a field, a title or investors)."""
+    if field == INVESTORS:
+        return value in investor_names(excerpt, domain)
+    return supports(excerpt, field, domain) == value
+
+
 def candidates(text: str, domain: str,
-               fields: tuple[str, ...] = FIELDS + TITLES) -> list[Support]:
+               fields: tuple[str, ...] = FIELDS + TITLES + (INVESTORS,)) -> list[Support]:
     """Every (field or title, value, excerpt) a page's prose supports, in page order.
 
     Excerpts are whole sentences with whitespace collapsed, 1 to 500 characters long.
@@ -488,6 +544,10 @@ def candidates(text: str, domain: str,
         if not 1 <= len(excerpt) <= MAX_EXCERPT_CHARS or not names_company(excerpt, domain):
             continue
         for field in fields:
+            if field == INVESTORS:
+                found += [Support(field, name, excerpt)
+                          for name in investor_names(excerpt, domain)]
+                continue
             value = supports(excerpt, field, domain)
             if value is not None:
                 found.append(Support(field, value, excerpt))

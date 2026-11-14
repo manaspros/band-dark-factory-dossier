@@ -33,11 +33,12 @@ class Candidate:
     true_from: str | None = None    # YYYY-MM-DD, or None
     learned_at: str | None = None   # time of the first build that gathered it
     title: str | None = None        # cfo/coo/cto for an executives candidate, else None
+    origin: str | None = None       # the origin of its page (stage 4, app.origins)
 
     def as_json(self, selected: bool) -> dict:
         head = {"title": self.title} if self.title is not None else {}
         return {**head, "value": self.value, "url": self.url, "excerpt": self.excerpt,
-                "provider": self.provider, "kind": self.kind,
+                "provider": self.provider, "kind": self.kind, "origin": self.origin,
                 "published_at": self.published_at, "retrieved_at": self.retrieved_at,
                 "true_from": self.true_from, "learned_at": self.learned_at,
                 "selected": selected}
@@ -47,7 +48,8 @@ class Candidate:
         """A candidate of ``field`` from its JSON (stage-2 JSON has no times or title)."""
         return cls(field, data["value"], data["url"], data["excerpt"], data["provider"],
                    data["kind"], data["published_at"], data["retrieved_at"],
-                   data.get("true_from"), data.get("learned_at"), data.get("title"))
+                   data.get("true_from"), data.get("learned_at"), data.get("title"),
+                   data.get("origin"))
 
     def identity(self) -> tuple:
         """Same field (and title), value, URL and provider: the `learned_at` key."""

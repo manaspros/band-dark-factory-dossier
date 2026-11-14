@@ -29,11 +29,15 @@ CREATE TABLE IF NOT EXISTS builds (dossier_id TEXT NOT NULL, number INTEGER NOT 
 CREATE TABLE IF NOT EXISTS history (n INTEGER PRIMARY KEY AUTOINCREMENT,
     dossier_id TEXT NOT NULL, field TEXT NOT NULL, entry TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS feed (seq INTEGER PRIMARY KEY, entry TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS batches (id TEXT PRIMARY KEY, batch TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS running (dossier_id TEXT PRIMARY KEY, build_time TEXT NOT NULL,
+    batch_id TEXT, spent INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS idempotency (user_id TEXT NOT NULL, method TEXT NOT NULL,
     path TEXT NOT NULL, key TEXT NOT NULL, fingerprint TEXT NOT NULL, status INTEGER NOT NULL,
     body TEXT NOT NULL, PRIMARY KEY (user_id, method, path, key));
 """
-_TABLES = ("meta", "users", "tokens", "dossiers", "builds", "history", "feed", "idempotency")
+_TABLES = ("meta", "users", "tokens", "dossiers", "builds", "history", "feed", "idempotency",
+           "batches", "running")
 
 
 def _dump(value) -> str:
@@ -77,6 +81,22 @@ class Writer:
     def add_feed(self, entry: dict) -> None:
         self._conn.execute("INSERT INTO feed VALUES (?, ?)", (entry["seq"], _dump(entry)))
 
+    def put_batch(self, batch) -> None:
+        self._conn.execute("INSERT INTO batches VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET "
+                           "batch = excluded.batch", (batch.id, _dump(batch.as_json())))
+
+    def put_running(self, dossier_id: str, build_time: str, batch_id: str | None) -> None:
+        """A build has started: until it is recorded, it is in flight (stage-4 Restarts)."""
+        self._conn.execute("INSERT OR REPLACE INTO running VALUES (?, ?, ?, 0)",
+                           (dossier_id, build_time, batch_id))
+
+    def set_running_spent(self, dossier_id: str, spent: int) -> None:
+        self._conn.execute("UPDATE running SET spent = ? WHERE dossier_id = ?",
+                           (spent, dossier_id))
+
+    def delete_running(self, dossier_id: str) -> None:
+        self._conn.execute("DELETE FROM running WHERE dossier_id = ?", (dossier_id,))
+
     def put_idempotency(self, key: tuple, record) -> None:
         self._conn.execute("INSERT OR REPLACE INTO idempotency VALUES (?, ?, ?, ?, ?, ?, ?)",
                            (*key, record.fingerprint, record.status, _dump(record.body)))
@@ -101,6 +121,8 @@ class Writer:
             self.add_feed(entry)
         for key, record in state.idempotency.items():
             self.put_idempotency(key, record)
+        for batch in state.batches.values():
+            self.put_batch(batch)
 
 
 class Database:

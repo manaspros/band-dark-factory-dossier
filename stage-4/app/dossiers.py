@@ -47,7 +47,7 @@ async def create(services, request: Request):
         dossier = Dossier(state.new_id("d"), domain)
         writer.put_dossier(dossier)
         state.dossiers[domain] = dossier
-        builds.start(dossier, build_time)
+        builds.start(dossier, build_time, writer)
         return idempotency.remember(state, writer, record, print_, 202, dossier.summary())
 
 
@@ -67,7 +67,7 @@ async def refresh(services, request: Request):
         raise not_found("no dossier for that domain")
     with store.transaction() as writer:
         if dossier.build is None:
-            builds.start(dossier, build_time)
+            builds.start(dossier, build_time, writer)
         return idempotency.remember(state, writer, record, _REFRESH_FINGERPRINT, 202,
                                     dossier.summary())
 

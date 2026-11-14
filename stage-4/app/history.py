@@ -7,9 +7,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from app.corroboration import corroborated_since
 from app.executives import EXECUTIVES, member_true_froms
 from app.fields import ALL_FIELDS, field_candidates
+from app.investors import name_true_froms
 from app.selection import Candidate, value_key
+from app.support import INVESTORS
 
 
 # --------------------------------------------------------------------------- learned_at
@@ -58,8 +61,23 @@ def _is_correction(old_value, old_true_from, new_value, new_true_from) -> bool:
             and new_true_from <= old_true_from)
 
 
+def _investors_type(old: dict, new: dict) -> str:
+    """Typed by name: `correction` when no name was removed and every added name's
+    true_from is on or before the earlier value's (stage-4 "Investors")."""
+    old_names = {value_key(n) for n in old["value"] or []}
+    new_names = {value_key(n): n for n in new["value"] or []}
+    if old_names - new_names.keys():
+        return "change"
+    dates = name_true_froms(new)
+    added = [n for key, n in new_names.items() if key not in old_names]
+    return ("correction" if all(_is_correction(old["value"], old["true_from"], n, dates[n])
+                                for n in added) else "change")
+
+
 def entry_type(name: str, old: dict, new: dict) -> str:
     """`correction` or `change` for a field whose selected value differs."""
+    if name == INVESTORS:
+        return _investors_type(old, new)
     if name != EXECUTIVES:
         return ("correction" if _is_correction(old["value"], old["true_from"],
                                                new["value"], new["true_from"]) else "change")
@@ -98,3 +116,11 @@ def entries_for_build(previous_fields: dict, new_fields: dict, first_ready: bool
                 "true_from": new["true_from"], "learned_at": build_time}
         added.append((name, history_entry(kind, new, build_time), feed))
     return added
+
+
+def stamp_corroborated_since(new_fields: dict, ready_before: list, build_time: str) -> dict:
+    """Each field's `corroborated_since`, over the ready builds before (app.store.BuildRecord)
+    and this one."""
+    return {name: {**field, "corroborated_since": corroborated_since(
+                name, [(b.time, b.fields[name]) for b in ready_before] + [(build_time, field)])}
+            for name, field in new_fields.items()}

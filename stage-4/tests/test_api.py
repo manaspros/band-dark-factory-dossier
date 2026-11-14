@@ -96,16 +96,19 @@ def test_build_and_read(client, web):
     assert f["funding_total"]["value"] == 12000000
     assert f["headcount_range"]["value"] == "51-200"
     assert f["legal_name"] == {"value": None, "status": "unknown", "true_from": None,
-                               "learned_at": None, "citations": [], "candidates": []}
+                               "learned_at": None, "citations": [], "candidates": [],
+                               "origins": [], "corroborated": False,
+                               "corroborated_since": None}
     assert f["ceo"]["status"] == "known"
     ceo = f["ceo"]["candidates"]
     assert ceo == [{"value": "Dana Ruiz", "url": "https://acme-robotics.test/about",
                     "excerpt": "Dana Ruiz has led Acme Robotics as chief executive since 2021.",
-                    "provider": "nimble", "kind": "own", "published_at": None,
+                    "provider": "nimble", "kind": "own", "origin": "acme-robotics.test",
+                    "published_at": None,
                     "retrieved_at": "2026-03-01T09:00:00+00:00", "true_from": None,
                     "learned_at": "2026-03-01T09:00:00+00:00", "selected": True}]
     assert web.count("research") == 1      # research runs on every build
-    assert body["spent_units"] == 9 + 25 + 2 * 3   # searches, research, two rendered pages
+    assert body["spent_units"] == 10 + 25 + 2 * 3  # searches, research, two rendered pages
     assert web.calls.count(("search", DOMAIN)) == 1
     assert post(client, h, key="k2").status_code == 200
 

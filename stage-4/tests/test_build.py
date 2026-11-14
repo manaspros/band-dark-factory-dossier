@@ -1,6 +1,7 @@
 """The build runner: budget, retries, timing, research and provenance."""
 import asyncio
 import time
+from datetime import datetime, timezone
 
 from app.budget import Budget
 from app.build import Build, Builds
@@ -18,7 +19,7 @@ def test_domain_query_refused_once_then_made_once():
     run(Build(DOMAIN, web))
     assert web.calls.count(("search", DOMAIN)) == 2
     searches = [a for m, a in web.calls if m == "search"]
-    assert len(searches) - searches.count(DOMAIN) == 8  # 6 fields, executives, the name
+    assert len(searches) - searches.count(DOMAIN) == 9  # 6 fields, executives, investors, name
 
 
 def test_domain_query_refused_three_times_continues_ready():
@@ -44,9 +45,9 @@ def test_budget_never_exceeds_cap_with_many_urls():
     web = FakeWeb(pages=pages)
     build = Build(DOMAIN, web)
     run(build)
-    assert web.count("extract") == (80 - 9 - 25) // 3      # rendered pages, 3 units each
+    assert web.count("extract") == (80 - 10 - 25) // 3     # rendered pages, 3 units each
     assert web.count("research") == 1
-    assert build.budget.charged == 9 + 25 + 15 * 3 <= 80
+    assert build.budget.charged == 10 + 25 + 15 * 3 <= 80
     assert build.unreached == 60 - 15
 
 
@@ -55,7 +56,7 @@ def test_lost_calls_are_charged_and_not_retried():
     build = Build(DOMAIN, web)
     run(build)
     assert web.count("extract") == len(PAGES)
-    assert build.budget.charged == 9 + 25 + 3 * len(PAGES)
+    assert build.budget.charged == 10 + 25 + 3 * len(PAGES)
 
 
 def test_research_runs_once_beside_the_searches():
@@ -126,7 +127,8 @@ def test_candidates_carry_build_time_kind_and_publication():
     [candidate] = fields["founded_year"]["candidates"]
     assert candidate == {"value": 2014, "url": "https://news.test/a",
                          "excerpt": "Acme Robotics was founded in 2014.", "provider": "nimble",
-                         "kind": "news", "published_at": "2026-01-10T00:00:00+00:00",
+                         "kind": "news", "origin": "news.test",
+                         "published_at": "2026-01-10T00:00:00+00:00",
                          "retrieved_at": "2026-03-01T09:00:00+00:00",
                          "true_from": "2026-01-10", "learned_at": None, "selected": True}
 
@@ -164,7 +166,8 @@ def test_reset_during_build_writes_nothing():
         builds = Builds(store, web_factory=lambda: FakeWeb(delay=0.05))
         dossier = Dossier("d_1", DOMAIN)
         store.state.dossiers[DOMAIN] = dossier
-        builds.start(dossier, None)
+        with store.transaction() as writer:
+            builds.start(dossier, datetime(2026, 3, 1, tzinfo=timezone.utc), writer)
         store.replace(State())
         await asyncio.sleep(0.5)
         return store, dossier
