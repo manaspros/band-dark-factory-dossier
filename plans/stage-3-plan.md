@@ -220,7 +220,12 @@ its proof, and the edges it must hold.
       URLs with `true_from` null. Initial history uses `true_from` null.
     - Stage-2 (lead rulings U1, U2, U4):
       - one ready build at `researched_at` holding every exported candidate and the whole
-        spend (DEV-S3a); a null `researched_at` means no build, so every `as_of` is 404;
+        spend (DEV-S3a);
+      - a null `researched_at` means **no build row** is created. The dossier row keeps its
+        id, domain, exported `state`, fields (all unknown as exported, with empty
+        candidates) and history (none). The exported `spent_units` is kept as the dossier's
+        `imported_spent` baseline: `GET` shows it, and later builds add to it. Every `as_of`
+        is 404 until a later build completes `ready`;
       - versions are one per candidate URL, with `true_from` = the UTC date of `published_at`,
         else null (DEV-S3b);
       - candidate `learned_at` = `retrieved_at` (U4);
@@ -236,6 +241,13 @@ its proof, and the edges it must hold.
   and `stage-2/` services. It checks:
   - initial entries;
   - as_of at and before `researched_at`;
+  - a stage-2-shaped dossier with null `researched_at` (state `failed`, spend 7):
+    - the import succeeds;
+    - `GET` shows the dossier with `spent_units` 7;
+    - every `as_of` (past and far future) is 404, and `/values` is 404;
+    - after a refresh completes `ready`, `as_of` at or after that build answers, and
+      `spent_units` includes the 7;
+  - the same case for a stage-1-shaped dossier;
   - `/values` (nulls for stage-1);
   - the first build after import gives `change` entries, executives `change` vs `initial`;
   - tokens and idempotent replays survive;
