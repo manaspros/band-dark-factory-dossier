@@ -43,7 +43,7 @@ Column key as in stage 1.
 | S14 | "A service that uses these vendors passes their base URLs to WebRouter in `provider_config`" `{"kernel": {"base_url": <KERNEL_BASE_URL>}, ...}` | `provider_config["kernel"] = {"base_url": env}` only when set. Keys are never read by the service. | RD | V1 `web.py` |
 | S15 | Cost: "Extract through `nimble` that loads the page in a browser - 3 per URL requested, including a URL for which no page is returned" | `cost_of("nimble","extract",render=True)=3`, charged unless refused. | UT `test_budget.py` | V1 `budget.py` |
 | S16 | Cost: "Open a session through `kernel` 0"; "`browserbase` 2"; "Each page served to a session, through either 1"; "Browse run through `browserbase` 4" | Kernel page load: reserve 1, settle 1 on a served page. A failed load is free. | UT | V1 |
-| S17 | "A failed open, a failed page load and releasing a session cost nothing." | Settle 0 on open failure, failed `goto` (navigation error / non-200), and release. | UT | V1 |
+| S17 | "A failed open, a failed page load and releasing a session cost nothing." | Settle 0 on open failure, failed `goto` (navigation error / non-200), and release. Applies only if V1b is triggered. | UT (V1b) `test_reader.py`: a failed `open_browser` costs 0, a failed `goto` costs 0, a release costs 0; budget totals asserted | V1b |
 | S18 | "Each provider keeps at most 4 sessions open at once; opening another is answered with an error." | Process-wide semaphore of 4 Kernel sessions shared by all builds (E4). | UT pool never exceeds 4 under 3 concurrent builds | V1 `sessions.py` |
 | S19 | "A session that no client has been connected to for 60 seconds is closed by the provider." | Sessions are opened per build and released in `finally`. A closed session (PageClosedError) falls back to rendered extract for the remaining pages. | UT | V1 |
 
@@ -61,7 +61,7 @@ Column key as in stage 1.
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
 | S24 | "A **candidate** is one value for one field, supported by one excerpt of one page. Every value that a page of the evidence (§4) supports for a field is a candidate of that field, once for each such page." | Key (field, normalised value, url). Each page's sentences are scanned in order; the first supporting sentence becomes the excerpt (E5). | S2 `test_disagreeing_sources_make_a_field_contested` (value set equals expected) | V4 `candidates.py` |
-| S25 | "The evidence now also holds the page that each research claim of the evidence cites, whether or not the citation supports its claim: a build reads that page as it reads any other." | Research claim URLs are read with top priority, whatever the claim says. | NOT EXERCISED -> UT (an unsupported claim's page is still read and its supported values become candidates) | V1 |
+| S25 | "The evidence now also holds the page that each research claim of the evidence cites, whether or not the citation supports its claim: a build reads that page as it reads any other." | Every distinct research claim URL (at most six, one per field) is rendered whatever the claim says. 18 units are reserved until research completes, and search-page renders wait for it (plan Budget split). | NOT EXERCISED -> UT (an unsupported claim's page is still read and its supported values become candidates; `six_distinct_claim_pages_all_read`: six claims cite six pages while searches return 25 URLs, and all six are rendered within 80 units) | V1 |
 | S26 | "A research claim whose citation does not support it is still not a candidate." | Claim excerpts are never candidates themselves. Candidates come only from the page text that was read (E6). | UT | V4 |
 | S27 | "A candidate's `provider` is a provider that served the text its excerpt is taken from; when several did, any of them may be given." | | UT provenance | V4 |
 | S28 | Candidate shape: `value, url, excerpt, provider, kind, published_at, retrieved_at, selected` (Candidates example) | | S2 `fx.assert_candidates` | V4, V6 |
@@ -97,7 +97,7 @@ Column key as in stage 1.
 
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
-| S46 | Routes `/`, `/dossiers/{domain}`, `/dossiers/{domain}/evidence`, `/contested`, `/signup`, `/login` "must be reachable by URL" | Served as HTML shells, without auth, by a client-rendered SPA (E8). | S2 `test_routes_are_directly_navigable` | V7 `ui_routes.py` |
+| S46 | Routes `/`, `/dossiers/{domain}`, `/dossiers/{domain}/evidence`, `/contested`, `/signup`, `/login` "must be reachable by URL" | Served as a static HTML shell with no dossier data, without a bearer token (E19), by a client-rendered SPA (E8). | S2 `test_routes_are_directly_navigable` | V7 `ui_routes.py` |
 | S47 | "Other screens must be reachable through the UI." | No other screens are planned. Navigation links connect all six routes. | RD | V8 |
 | S48 | "The browser and the API share `/dossiers/{domain}`. Return the UI for `Accept: text/html`; API requests without that header receive JSON." | `text/html` anywhere in `Accept` gives the HTML shell, without needing a token. Otherwise the stage-1 JSON handler runs (auth as before). | S2 `test_api_and_browser_share_the_dossier_route` | V7 |
 | S49 | "`/`, `/dossiers/{domain}/evidence` and `/contested` are browser routes; they read the API's dossier data." | No new API endpoints. Evidence reads `GET /dossiers/{domain}`. Contested reads the paginated `GET /dossiers` plus a `GET` per dossier. | RD | V8 |
@@ -182,7 +182,7 @@ Column key as in stage 1.
 |---|---|---|---|---|
 | S99 | "After any successful action, the data on the same page must show the new state without a manual reload." | After 202/200, re-read the dossier, which then polls while `building`. | E2E | V11 |
 | S100 | "Navigation must wait for the write to succeed before it refreshes the data." | `await` the POST, then navigate or read. | E2E | V10, V11 |
-| S101 | "**Latest read wins:** a delayed earlier read must not overwrite a later one, including when responses arrive out of order. This applies to the reads while a dossier is `building` as well." | Each screen has a monotonically increasing read sequence. A response is applied only if its sequence is greater than the last applied one (E15). | E2E with route interception delaying the first read | V12 |
+| S101 | "**Latest read wins:** a delayed earlier read must not overwrite a later one, including when responses arrive out of order. This applies to the reads while a dossier is `building` as well." | Each screen has a monotonically increasing read sequence. A response is applied only if its sequence is greater than the last applied one (E15). | E2E with route interception: reload race, polling race while building, reload vs poll (V12) | V12 |
 | S102 | "A refresh from this browser while that build runs is answered 202 like any other and the screen follows the running build to its end." | 202 leads to a read showing `building`, then polling. | E2E | V11 |
 | S103 | "If a research or refresh response is lost, including after the request commits, show `research-uncertain` or `refresh-uncertain` (nonempty text), not `research-error` or `refresh-error`." | | E2E (route abort after forwarding) | V11 |
 | S104 | "Keep the request retryable with the **same key and body**." | The pending `{key, body, path}` is kept in memory. The retry button and a repeat submit of the same domain reuse it (E16). | E2E: inspect request headers on retry | V11 |
@@ -296,6 +296,13 @@ Column key as in stage 1.
 - **E15** Read sequence numbers are per screen and per resource. A response that arrives late
   is discarded.
 - **E16** The pending write is keyed by (method, path, body). A new body gets a new key.
+- **E19** (open to lead, from the audit) Auth boundary for HTML. Stage-1 R99 covers the JSON API.
+  The browser routes, including `GET /dossiers/{domain}` with `Accept: text/html`, return
+  the same static shell with no dossier data. A top-level browser navigation cannot carry a
+  bearer header, and the shell reads every dossier through the authenticated API. So no
+  dossier data is served without a valid token. Proof: UT `test_ui_routes.py`: a
+  `text/html` request without a token returns 200 with the shell, and the body contains no
+  domain-specific data; the JSON API without a token is still 401.
 - **E17** The migration fixture is produced by running the frozen `stage-1/` service in tests
   (or a recorded export from it) and committed under `stage-2/tests/fixtures/`.
 

@@ -63,9 +63,15 @@ DOM rendering is hand-written. To keep that manageable, each screen module expor
 | B4 | rendered extract of every screened-in page, ranked by field-query top-3 hits, within the budget | 3 each |
 | C | candidates from rendered text only -> selection -> fields | 0 |
 
-- **Budget split:** of the 47 units left after step A, 3 renders (9 units) are reserved for
-  research-cited pages until research completes. Unused reserve returns to B4. B3 is skipped
-  for a URL when its B4 render could no longer be afforded.
+- **Budget split (S25):** research asks for six fields, so it can cite at most six distinct
+  pages. Of the 47 units left after step A, 18 (six renders) stay reserved for research-cited
+  pages, which leaves at most 29 units for B3 screens before research completes. Search-page
+  renders (B4) do not start until research has completed (or failed, or hit the deadline).
+  At that point B1 renders every distinct claim URL not already rendered, and only then does
+  the remainder go to B4. So every claim page is always affordable, and the exact reserve is
+  known before any search page is rendered. A claim URL that is also a search URL is rendered
+  once. Unused reserve returns to B4. B3 is skipped for a URL when its B4 render could no
+  longer be afforded.
 - **Why the screen (E3):** plain served text equals browser text except on browser-only pages,
   and those are rendered whenever their served text has a statement. So 1 unit spent per page
   avoids a 3-unit render of a page that carries no candidate. The residual risk is matrix
@@ -192,8 +198,12 @@ V0 -> V12.
 - **Changes:** `store.py` fields gain `candidates`; the dossier view returns them; a failed
   build keeps the previous candidates. `dossiers.py` list `legal_name` is the selected value.
 - **Rows:** S28, S33, S45, S116.
-- **Proof:** UT for: `building` shows the previous candidates; `failed` keeps them; the list
-  shows a contested legal name.
+- **Proof:** UT for:
+  - `building` shows the previous candidates;
+  - `failed` keeps them;
+  - a `ready` refresh of an imported dossier replaces its imported candidates with the build's
+    (S116);
+  - the list shows a contested legal name.
 - **Files:** `stage-2/app/store.py` (model and view), `stage-2/app/dossiers.py`.
 
 ### V6 Export/import and stage-1 migration
@@ -244,7 +254,9 @@ V0 -> V12.
   `/dossiers/{domain}/evidence` (registered **before** the stage-1
   `/dossiers/{domain:path}` route), and `GET /dossiers/{domain}` when `Accept` contains
   `text/html`. It also serves `/static/*` with correct content types and
-  `Cache-Control: no-cache`. HTML routes need no auth. An API GET without `text/html` behaves as
+  `Cache-Control: no-cache`. HTML routes return a static shell with no dossier data and need no
+  bearer token (E19). All dossier data is read by the shell through the authenticated JSON
+  API. An API GET without `text/html` behaves as
   in stage 1.
 - **Rows:** S46, S48, S49.
 - **Proof:** S2 `test_api_and_browser_share_the_dossier_route`; UT for: `Accept:
@@ -266,9 +278,23 @@ V0 -> V12.
     AbortController, and outcome classification (ok, refused 4xx, uncertain) (E11).
   - `ui/format.js`: formats values for people (S57).
 - **Rows:** S47, S52, S55-S62, S66, S67, S120.
-- **Proof:** E2E `tests/e2e/test_layout.py` (Playwright) checks, at 375 and 1280 px on every
-  route: no horizontal scroll, every input has a label, focus is visible. The verifier reviews
-  screenshots.
+- **Proof:** E2E `tests/e2e/test_layout.py` (Playwright), at 375 and 1280 px on every route:
+  - no horizontal scroll, every input has a label, focus is visible.
+
+  E2E `tests/e2e/test_format.py` (S57), for a dossier with every field known:
+  - `founded_year` shows as `2014` with no grouping;
+  - headcount shows as `51-200 employees`;
+  - funding shows as `US$12,000,000`;
+  - `researched_at` and `published_at` show as localised dates, not raw RFC 3339;
+  - names show as written;
+  - no `dossier_id` or `user_id` appears in visible text.
+
+  E2E `tests/e2e/test_states.py` (S56) captures a screenshot of each state:
+  - known, unknown, contested, building, failed (a dossier whose build failed), loading,
+    success, refused, uncertain;
+  - each state's indicator differs in class or icon and in text, not only in colour.
+
+  The verifier reviews the screenshots.
 - **Files:** `stage-2/app/ui/{index.html,styles.css,app.js,api.js,format.js}`.
 
 ### V9 Screens: auth, dossier, evidence, contested
@@ -282,9 +308,13 @@ V0 -> V12.
 
   Contested aggregates the paginated list plus per-dossier GETs, at most 6 at a time.
 - **Rows:** S51, S53, S54, S58, S63-S65, S77-S91, S93-S98.
-- **Proof:** S2 screen tests; E2E `tests/e2e/test_screens.py` asserts every testid and
-  attribute against API data for a dossier with known, contested and unknown fields, plus
-  imported null kinds.
+- **Proof:** S2 screen tests. E2E `tests/e2e/test_screens.py` asserts every testid and
+  attribute against API data for:
+  - a dossier with known, contested and unknown fields, plus imported null kinds;
+  - a failed dossier;
+  - an empty dossier list (`empty-dossiers`, S74);
+  - an unknown domain (`dossier-not-found`, S90);
+  - no contested field (`empty-contested`, S98).
 - **Files:** `stage-2/app/ui/{auth,dossier,evidence,contested}.js`.
 
 ### V10 List screen and research form
@@ -322,9 +352,17 @@ V0 -> V12.
   is `building`, it polls every 1.5 s from each read's issue time, and stops on `ready` or
   `failed` or when the screen is left. `dossier-reload` issues a read.
 - **Rows:** S92, S101, S107.
-- **Proof:** E2E: delay read #1 by 3 s and let read #2 return at once, then check the screen
-  shows read #2. E2E: a build in progress turns `ready` on screen without a click within 2 s
-  of the API turning ready.
+- **Proof:** E2E:
+  - **Reload race:** delay read #1 by 3 s and let read #2 return at once, then check the
+    screen shows read #2.
+  - **Polling race (S101, while building):** hold a polling read showing `building` for 3 s.
+    Meanwhile a later poll returns `ready` with new fields. When the delayed `building`
+    response arrives, the screen must still show `ready` and the new fields, and polling must
+    not restart.
+  - **Reload vs poll:** a `dossier-reload` issued after a poll wins over that poll's delayed
+    response.
+  - **Build completion:** a build in progress turns `ready` on screen without a click within
+    2 s of the API turning ready.
 - **Files:** `stage-2/app/ui/reader.js`.
 
 ## Row coverage
