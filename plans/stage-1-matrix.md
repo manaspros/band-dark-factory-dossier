@@ -104,7 +104,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R60 | "A `known` field has one or more citations. An `unknown` field has `"value": null` and `"citations": []`." (§4) | | S `test_build_a_dossier` | U6 |
 | R61 | "`url` is the URL of the page the excerpt was served for, `provider` is `nimble` or `tavily`, the provider that served it." (§4) | For an extract, `url` = the URL WebRouter reports for the document (D12); for a research claim, the claim citation URL. `provider` is the provider of the call that returned the text (always `nimble` under D1); each candidate carries the provider and URL from the `CallOutcome` that produced it, never from a constant at render time. | PARTIAL: S `assert_citations` checks URL/text only and `assert_field` only that `provider` is an allowed label. NOT EXERCISED for provenance -> UT `test_build.py::citation_provenance` (fake web records each served (provider, url, text); every emitted citation's (provider, url) is among them and its excerpt is a whitespace-collapsed substring of that text). Verifier: correlates citations with the mock `/calls` log (`served` entries per call) | U4, U6, U7 |
 | R62 | Definition of **evidence**: "every page that some search, through any provider and for any query naming the company (as in Appendix A.2), returns, with its full text, and every claim that a `nimble` research run for the company asking for all six fields answers with." (§4 Evidence) | The build approximates "all evidence" with field-targeted searches + extracts + one research run (plan §Search strategy). Pages beyond what any affordable query returns are a known residual risk (Open-1). Every page a build gathers (full text) and every research claim it receives is fed to `support.candidates()`; nothing gathered is dropped before evaluation. | PARTIAL: S `test_build_a_dossier` checks only that values are in the expected set; it does not check coverage. NOT EXERCISED for coverage -> UT `test_build.py::all_gathered_text_is_evaluated` (fake web with a supporting sentence planted in the last-extracted page and in a research claim; both reach the field). Verifier: for each sample company, compare the URLs the build extracted (mock `/calls`) with the union of searchable company pages in `challenges/dossier/web/corpus/sample/<domain>.json`, and list any supported value on an un-gathered page (Open-1) | U7 |
-| R63 | "every build makes exactly one whose query is exactly the company's normalised domain, through a provider of its choice" (§4) | Exactly one *successful* search with query == normalised domain; no other query equals the domain. Refused attempts cost 0 and are retried per D29: while any other call of the build has succeeded, retries continue until success or the build deadline; only when nothing in the build has succeeded does it stop after 3 retries (so an all-refused build fails fast). | NOT EXERCISED in visible checks -> UT `test_build.py::exactly_one_domain_query` (fake web: first attempt 429), `::domain_query_retried_while_others_succeed` (refused 5 times, then succeeds, build ready with exactly one success), `::all_refused_fails_fast` | U7 |
+| R63 | "every build makes exactly one whose query is exactly the company's normalised domain, through a provider of its choice" (§4) | Exactly one *successful* search with query == normalised domain; no other query equals the domain. Refused attempts cost 0 and are retried per D29/D31. In the fast regime, retries stop at 4.0 s after build start (R127). Otherwise, while any other call of the build has succeeded, retries continue until success or the build deadline. When nothing in the build has succeeded, retries stop after 3, so an all-refused build fails fast. The residual cases are in C2. | NOT EXERCISED in visible checks -> UT `test_build.py::exactly_one_domain_query` (fake web: first attempt 429), `::domain_query_retried_while_others_succeed` (refused 5 times, then succeeds, build ready with exactly one success), `::all_refused_fails_fast` | U7 |
 | R64 | "its other such searches use other queries." (§4) | All other search queries differ from the bare domain string. | UT same as R63 | U7 |
 | R65 | "A search that a provider answers with an error does not count." (§4) | A refused domain search is retried. | UT same as R63 | U7 |
 | R66 | "The excerpt is copied character for character from that served text, except that any run of whitespace may be written as a single space. It is 1 to 500 characters long." (§4 citation) | Excerpt = one A.1 sentence with whitespace runs collapsed; sentences >500 chars are not citable. | S `assert_citations`; UT length bound | U5 |
@@ -188,7 +188,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R124 | "A build ends in `ready` when it completed, or `failed` when none of its provider calls succeeded." (§8) | `failed` iff zero provider calls succeeded. | D `test_build_with_no_provider_answering_fails` | U7 |
 | R125 | "A failed build leaves the fields as they were." (§8) | Also leaves `researched_at`. | D `test_failed_dossier_lists_a_null_legal_name` (first build); refresh-then-fail NOT EXERCISED -> UT | U7 |
 | R126 | "When a build completes `ready`, each field is `known` exactly when the evidence (§4) supports a value for it." (§8) | | S `test_build_a_dossier` | U6, U7 |
-| R127 | "A build whose provider calls each answer within one second ends within 10 seconds of the request that started it." (§8) | Calls are issued concurrently in two waves (plan). | NOT EXERCISED for timing -> CMD timed build against the mock | U7 |
+| R127 | "A build whose provider calls each answer within one second ends within 10 seconds of the request that started it." (§8) | "Answer" includes a refusal: a call refused within 1 s still counts as answered within 1 s. The build tracks whether every attempt so far answered within 1 s (the *fast regime*, D31). In the fast regime no retry is started after 4.0 s from build start, all extracts of a wave are issued at once, and research is polled every 1 s with the first poll immediately. Worst-case timeline: searches with retries end by 5 s, extracts by 6 s, and research (submit, poll, result) by 9 s. | NOT EXERCISED -> UT `test_build.py::fast_regime_bound` with a fake web whose every attempt takes 0.9 s, over three scenarios, each asserting the build ends < 10 s: (a) 47 URLs plus research needed; (b) every first attempt refused, retries succeed; (c) the domain query is refused on every attempt while others succeed (ends `ready`, see C2). Verifier: time a build against the harness mock with its "429 the first time each call is made" fault on | U7 |
 | R128 | "against the live providers (`NIMBLE_BASE_URL` unset, or its host `sdk.nimbleway.com`) ... a build does not give up on a call that has been waiting less than 30 seconds" (§8) | Per-call timeout 45 s for search/extract; research polled up to the build deadline (D8). | NOT EXERCISED -> RD constants | U4, U7 |
 | R129 | "nor stop gathering because of the time it has run in its first 120 seconds." (§8) | No phase is skipped for elapsed time before 120 s. | NOT EXERCISED -> RD | U7 |
 | R130 | "It still ends `ready` or `failed` within 300 seconds." (§8) | Hard build deadline 270 s, then decide with what was gathered. | NOT EXERCISED -> UT with tiny deadline | U7 |
@@ -317,7 +317,20 @@ is larger. A row marked with a supplied check may still have cases those checks 
   some calls succeeded) and R130 (it must end within 300 s) win over R63. **Flagged for lead**:
   the plan accepts this residual case rather than failing a build whose other calls succeeded.
   If every call in the build is refused, retries stop after 3 and the build is `failed`, which
-  matches R124.
+  matches R124. **Second residual case (from R127, D31):** when every attempt answers within
+  1 s, retries stop 4.0 s after build start so the build ends within 10 s. A provider that
+  quickly refuses the bare-domain query for those 4 s while answering other calls therefore
+  yields a `ready` build with no successful domain search. R127 and R124 win over R63 here
+  too. **Lead is asked to confirm** that R127 (and R124) take priority over R63 in both
+  residual cases. The alternative is to fail such builds, which would break R124.
+- **C4 (R127 vs R129)**: R129 says that against live Nimble a build does not "stop gathering
+  because of the time it has run in its first 120 seconds". R127 says a build whose calls each
+  answer within 1 s ends within 10 s. If live Nimble answered every call within 1 s but kept
+  refusing some of them, retrying past 4 s would honour R129 and break R127, and stopping
+  would do the reverse. The plan applies R127 whenever its condition (every attempt so far
+  within 1 s) holds, because it is the more specific clause. R129's time protection applies
+  as soon as any attempt takes longer than 1 s (D31). **Flagged for lead** to confirm the
+  precedence.
 - **C3 (R55 vs R201/R209/R181)**: §4 says `hq_city` is the city "without region or country".
   Appendix A, which §4 and A itself call "the whole definition" of support, makes the value
   the longest run of capitalised words after the phrase, "the text as the excerpt writes it".
@@ -349,9 +362,10 @@ is larger. A row marked with a supplied check may still have cases those checks 
   (search rank order, then research), and then to the lexicographically smallest JSON
   encoding. Citations are every distinct (url, excerpt) pair supporting that value, ordered by
   gathering order.
-- **D8** Timeouts: 45 s per search/extract call, research polled every 2 s (first poll right away)
-  until a build deadline of 270 s from the build's start. The same constants are used for the
-  mock and live, which satisfies R127-R130.
+- **D8** Timeouts: 45 s per search/extract call. Research is polled with the first poll right
+  away, then every 1 s in the fast regime and every 2 s otherwise (D31), until a build deadline
+  of 270 s from the build's start. The same constants apply to the mock and live; the regime
+  is decided by observed call times, not by the host name.
 - **D9** A store generation counter is bumped by reset and import. A build captures it at start
   and discards all writes (fields, state, spent units) if it changed.
 - **D10** The clock keeps the aware datetime it was given (offset preserved) and returns
@@ -406,10 +420,23 @@ is larger. A row marked with a supplied check may still have cases those checks 
   When it runs, it still asks for all six fields (R160 and the §4 evidence definition), and
   each claim is evaluated only for its own field.
 - **D29** Retry policy for refused calls (HTTP error status, 0 units). The bare-domain search is
-  retried with backoff (0.25 s doubling, capped at 2 s) until it succeeds or the build
-  deadline, as long as any other call of the build has succeeded. If no call has succeeded, it
-  stops after 3 retries. Every other call gets at most 3 retries. Timeouts and connection
-  errors are charged and never retried.
+  retried with backoff (0.25 s doubling, capped at 1 s in the fast regime and 2 s otherwise)
+  until it succeeds or the build deadline, as long as any other call of the build has
+  succeeded. If no call has succeeded, it stops after 3 retries. Every other call gets at most
+  3 retries. Timeouts and connection errors are charged and never retried. All of this is
+  subject to the fast-regime cut-off in D31.
+- **D31** Fast regime (R127). A build is in the fast regime while every provider attempt it has
+  made has answered within 1.0 s, whether with a result or a refusal. While in it:
+  - no retry attempt starts later than 4.0 s after build start;
+  - each wave issues all its calls at once (up to 47 extracts; no concurrency cap below
+    that);
+  - research is polled every 1 s, first poll immediately.
+
+  The first attempt that takes longer than 1.0 s, or times out, switches the build to the slow
+  regime for good. From then on D29 applies without the 4.0 s cut-off, and nothing is stopped
+  for elapsed time before 120 s (R129). The worst case in the fast regime is about 9 s: wave 1
+  searches with retries take up to 5 s, extracts end by 6 s, and research (submit, first poll,
+  result) ends by 9 s.
 - **D30** Fixture and import ids: a user `id` must be a non-empty string of at most 64
   characters, and ids must be unique. Dossier ids in an import follow the same rule. A
   violation is 422 `validation_failed` with nothing changed. This is the §3.5 bound applied
@@ -434,3 +461,8 @@ is larger. A row marked with a supplied check may still have cases those checks 
   timeout and the exception it raises on expiry (`ResearchTimeoutError`) come from the README
   and were not read in code. `ProviderError.original` holds the SDK exception
   (`web_router/exceptions.py:305-315`).
+- **Open-5** D31 needs the research poll interval to be controllable: first poll immediately,
+  then every 1 s. `ResearchJob`'s docstring says "Polling backs off", and its interval and
+  whether it can be configured were not read. The builder settles this in
+  `web_router/providers/base.py` (the `Job` class). If the interval cannot be set, the builder
+  polls with the job's non-blocking status call in its own loop.

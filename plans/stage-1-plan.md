@@ -51,7 +51,7 @@ Per build, all through `nimble`, with `max_results=10`:
 | 1 (concurrent) | search `lite`, query = exactly the normalised domain | 1 | 1 |
 | 1 (concurrent) | search `lite`, one per field: `f"{domain} {terms}"` with terms from A.3 (e.g. `"legal name registered name"`, `"headquartered in based in head office"`, `"chief executive officer CEO"`, `"founded established incorporated"`, `"employees staff headcount"`, `"raised funding investment"`) | 6 | 6 |
 | 1 (concurrent) | search `lite`, query = company name (`acme robotics`) | 1 | 1 |
-| 2 (concurrent, at most 8 in flight) | extract (default markdown format, no `render`), one URL per call, for the union of result URLs in rank order: domain query first, then field queries, then name query | <=N | 1 each |
+| 2 (all issued at once, at most 47) | extract (default markdown format, no `render`), one URL per call, for the union of result URLs in rank order: domain query first, then field queries, then name query | <=N | 1 each |
 | 3 | evaluate all gathered text (`support.candidates`) -> provisional fields | - | 0 |
 | 4 (only if some field is unknown, D28) | research run: `submit_research(query=f"Company profile of {domain}: legal_name, hq_city, ceo, founded_year, headcount_range, funding_total", output_schema=SIX_FIELD_SCHEMA, effort="low")`, then await the result | 0 or 1 | 0 or 25 |
 
@@ -71,12 +71,13 @@ Per build, all through `nimble`, with `max_results=10`:
   Each query also contains the domain, so the company's own pages rank first.
 - **Exactly one domain query (R63-R65, D29):** the domain query is the only query that equals
   the domain string. All other queries add terms. If it is refused (HTTP error status, 0
-  units), it is retried with backoff starting at 0.25 s, doubling, capped at 2 s. Retries
-  continue until it succeeds or the build deadline, as long as any other call of the build has
-  succeeded. If nothing in the build has succeeded, it stops after 3 retries, so an all-refused
+  units), it is retried with backoff starting at 0.25 s and doubling, capped at 1 s in the fast
+  regime and 2 s otherwise. Retries continue until it succeeds or the build deadline, as long
+  as any other call of the build has succeeded. In the fast regime (D31), no retry starts
+  after 4.0 s. If nothing in the build has succeeded, it stops after 3 retries, so an all-refused
   build fails fast. After one success it is never repeated. The residual case is flagged to
-  lead as matrix C2: the domain query is refused for the whole build while other calls
-  succeed.
+  lead as matrix C2: the domain query is refused for the whole build (or, in the fast regime,
+  for its first 4 s) while other calls succeed.
 - **Research (R69, R160):** the query contains the normalised domain. The schema's
   `properties` are exactly the six field names (types: string/integer, nullable). Claims come
   from `ResearchResponse.citations` with `field == "$.<name>"`. For each claim, take every
@@ -93,10 +94,21 @@ Per build, all through `nimble`, with `max_results=10`:
   cannot be told apart (Open-3): treat an unknown failure as charged, which is safe for R3.
 - **Extract cost (R157):** each extract call is charged 1 unit whether it returns a document, a
   `failures` entry, or raises after an HTTP 200. Only a refused HTTP status is free.
-- **Time (R127-R130, D8):** wave 1 runs concurrently, wave 2 runs concurrently, and the
-  conditional research run comes last (the mock completes it on the first poll). Each call has a 45 s timeout. The research result is awaited until build start
-  + 270 s. If the deadline passes, the build decides with what it has. With 1-second mock
-  calls this takes 3 to 4 s, inside 10 s.
+- **Time (R127-R130, D8, D31):** wave 1 is issued all at once, then wave 2 all at once, then the
+  conditional research run (first poll immediately). Each call has a 45 s timeout. The research
+  result is awaited until build start + 270 s. If the deadline passes, the build decides with
+  what it has.
+- **Fast regime (R127, D31):** the build records each attempt's duration. While every attempt
+  has answered (result or refusal) within 1.0 s:
+  - no retry starts after 4.0 s from build start;
+  - retry backoff is capped at 1 s;
+  - research is polled every 1 s.
+
+  Worst case: searches with retries by 5 s, extracts by 6 s, research by 9 s, which keeps the
+  build under 10 s. One slower or timed-out attempt switches the build to the slow regime. From
+  then on, retries follow D29 with no 4 s cut-off, and no phase stops for elapsed time before
+  120 s (R129). Precedence between R127 and R129 is flagged to lead as matrix C4. How to
+  control the research poll interval is matrix Open-5.
 - **Outcome (R124):** `failed` iff zero provider calls succeeded (a refused or timed-out call
   is not a success). Otherwise `ready`.
 
@@ -260,7 +272,12 @@ split between writers without collisions. Build order is U1 -> U11.
   an unsupported claim leaves it unknown); (k) citation provenance: every emitted citation's
   (provider, url) was served by a fake call, and its excerpt is a whitespace-collapsed
   substring of that call's text; (l) all gathered text is evaluated: a supporting sentence in
-  the last-extracted page reaches its field. CMD: time one build against the harness mock
+  the last-extracted page reaches its field; (m) fast-regime bound (R127): a fake web whose
+  every attempt takes 0.9 s, with 47 URLs and research needed, still ends under 10 s in three
+  scenarios: all attempts succeed; every first attempt is refused; the domain query is always
+  refused while other calls succeed (the build ends `ready`); (n) regime switch: one attempt
+  takes 1.5 s, so later refused calls are still retried after 4 s. CMD: time one build against
+  the harness mock with its "429 the first time" fault on
   (<10 s).
 - **Edges:** zero URLs found; one URL; research refused but searches succeed (`ready`);
   research times out (charged 25); two builds of different dossiers run at once with
