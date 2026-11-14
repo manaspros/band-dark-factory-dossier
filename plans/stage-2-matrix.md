@@ -253,28 +253,40 @@ Column key as in stage 1.
   search keeps 3 attempts for non-429 refusals.
 - **C-S2 (S117), confirmed by lead.** Research runs in every build (25 units), because its cited
   pages are evidence.
+- **C-S3 (S7/S13/S24 vs R3), open for a lead ruling.** The spec makes every page's browser text
+  evidence, and every supported value of every evidence page a candidate. Nimble-only rendering
+  costs 3 per page. After searches (8), research (25) and the claim-page reserve (up to 18), it
+  can render about 9-15 search pages per build. Companies with more evidence pages than that
+  cannot be read completely within 80 units by any Nimble-only method. The plan renders
+  everything when affordable. Otherwise it orders by a screen and keeps rendering
+  screened-out pages while budget remains (E3). A browser-only fact on a page beyond the
+  budget can still be missed. Options for lead:
+  - (a) accept this as a documented limitation;
+  - (b) trigger V1b (Kernel at 1 unit per page) whenever the URL count exceeds the Nimble
+    render capacity, with Nimble-only otherwise unchanged;
+  - (c) drop the screen and render in search-rank order.
+
+  The plan recommends (a), plus (b) if the harness shows misses.
 - **E1** Header values are taken after `Kind:` with the line's surrounding spaces trimmed, and
   matched case-sensitively against the four kinds.
 - **E2** Browser text from Kernel is `browser.read(format="text")` after `goto`. The README
   says it returns an `ExtractedDocument`; whether it is the page's `innerText` is unverified
   (Open-S1).
-- **E3** (lead decision 4) Nimble-only read pipeline. After 8 search units and 25 for
-  research, 47 units remain.
-  1. **Research-cited URLs** are always read with rendered extract (3 each), first. They are
-     evidence (S25) and are often non-searchable filings.
-  2. **Free snippet screen:** a search URL whose lite snippet (the served prose prefix) already
-     contains a sentence that supports a value goes straight to rendered extract.
-  3. **Plain-extract screen (1 unit, never cited):** every other search URL is read once
-     with plain extract. Its served text is checked with `supports()`. A page with any
-     supporting sentence, or with a statement phrase and the company name in one sentence, is
-     queued for rendered extract. Other pages are dropped.
-  4. **Rendered extract** (3 each) of the queued pages, ranked by the number of field-query
-     top-3 hits. Candidates come only from rendered text (S7).
+- **E3** (lead decision 4; revised after the audit) Nimble-only read pipeline. After 8 search
+  units and 25 for research, 47 units remain, and 18 of them are reserved for up to six
+  research-cited pages (S25).
+  1. **Research-cited URLs** are always rendered (3 each), once research completes.
+  2. **Render-all when affordable:** if every distinct search URL fits the remaining budget at
+     3 each, all are rendered with no screening. No page can be missed.
+  3. **Otherwise, order by a screen, never drop.** A free snippet check, then a 1-unit plain
+     extract of the inconclusive URLs, with served text never cited. The screen only ranks
+     pages: screened-in first (by field-query top-3 hits), then screened-out, then unscreened.
+     Rendering proceeds down that order until the budget is spent. Screen calls are bought only
+     while `screens + 3 x renders` stays within the budget.
+  4. Candidates come only from rendered text (S7).
 
-  The screen spends 1 unit to avoid 3-unit renders of pages with no statement. For example,
-  20 URLs give 20 screen units, leaving 27 for 9 renders. Plain served text equals browser
-  text except on browser-only pages, and those are rendered whenever their served text has a
-  statement. The residual risk is Open-S4.
+  The screen never removes a page from consideration. It changes only which pages a short
+  budget reaches first.
 - **E4** (only if V1b is triggered) A process-wide pool of at most 4 Kernel sessions. Page loads
   cost 1, open costs 0, and sessions are released in `finally`. Kernel serves only pages the
   Nimble pipeline could not afford. It is never required.
@@ -314,12 +326,10 @@ Column key as in stage 1.
 - **Open-S2** Whether Nimble rendered extract through `provider_options={"render": True}` maps to
   the request field `render: true` (the mock bills `RENDER_COST` 3 on `render is True`, per
   `challenges/dossier/web/mockweb/nimble.py`). To settle: check the mock `/calls` log.
-- **Open-S4** Screening assumes a page whose plain served text has no statement also has none
-  in its browser text. This fails only for a browser-only page whose static text has no
-  statement phrase. The sample corpus's browser-only pages all carry statements in their
-  static text (read from `challenges/dossier/web/corpus/sample`; harness material). To settle
-  it, the verifier compares Nimble-only candidate sets with the expected values in a harness
-  run. That comparison also triggers V1b if needed.
+- **Open-S4** How often the budget cannot render every evidence page (C-S3) on the graded corpus.
+  Sample companies have 13-24 pages (`challenges/dossier/web/corpus/sample`, harness
+  material). The verifier's Nimble-only harness run compares candidate sets with expected
+  values. That decides between C-S3 options and whether V1b is triggered.
 - **Open-S3** (V1b only) The Playwright dependency for the `[browser]` extra adds image size. Version
   pinning must follow the org's 7-day release-age rule.
 - **Open-1..5** (stage 1) still apply.

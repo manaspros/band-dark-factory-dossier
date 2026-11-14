@@ -58,9 +58,9 @@ DOM rendering is hand-written. To keep that manageable, each screen module expor
 | A (at once) | 8 lite searches (exact domain + 6 field queries + company name), as stage 1 | 8 |
 | A (at once) | research run, all six fields (S117, confirmed) | 25 |
 | B1 | rendered extract of research-cited URLs (as soon as research completes) | 3 each |
-| B2 | free snippet screen of search URLs; a supporting snippet sends the URL straight to B4 | 0 |
-| B3 | plain-extract screen (served text, never cited) of the remaining search URLs, all at once | 1 each |
-| B4 | rendered extract of every screened-in page, ranked by field-query top-3 hits, within the budget | 3 each |
+| B2 | **render-all check:** if every distinct search URL fits the budget left after the claim reserve (`3 x URLs <= remaining`), skip B3 and render every page (no screening) | 0 |
+| B3 | only when B2 fails: an ordering screen. A free snippet check, then a plain extract (served text, never cited) of the URLs whose snippet is inconclusive, while `screens + 3 x renders` still fits. The screen only **orders** pages; it never drops one | 0 or 1 each |
+| B4 | rendered extract in order: screened-in pages (by field-query top-3 hits), then screened-out pages, then unscreened pages, until the budget is spent | 3 each |
 | C | candidates from rendered text only -> selection -> fields | 0 |
 
 - **Budget split (S25):** research asks for six fields, so it can cite at most six distinct
@@ -72,10 +72,13 @@ DOM rendering is hand-written. To keep that manageable, each screen module expor
   known before any search page is rendered. A claim URL that is also a search URL is rendered
   once. Unused reserve returns to B4. B3 is skipped for a URL when its B4 render could no
   longer be afforded.
-- **Why the screen (E3):** plain served text equals browser text except on browser-only pages,
-  and those are rendered whenever their served text has a statement. So 1 unit spent per page
-  avoids a 3-unit render of a page that carries no candidate. The residual risk is matrix
-  Open-S4. The verifier checks it with a Nimble-only harness run.
+- **Screening only orders pages (E3):** a page's browser text can carry a fact its plain served
+  text lacks. So screening never removes a page; it only decides which pages are rendered first
+  when the budget cannot render them all. When it can (B2), every page is rendered and nothing
+  can be missed. When it cannot, some pages go unrendered whatever the method. In that case the
+  screen spends the budget on pages most likely to carry candidates, and screened-out pages are
+  still rendered while budget remains. The residual, a browser-only fact on a page the budget
+  could not reach, is conflict **C-S3**, open for a lead ruling.
 - **Kernel (V1b, conditional):** added only if the verifier's harness run shows that
   Nimble-only misses candidates within 80 units. If added, it serves only pages the Nimble
   pipeline could not afford. Nimble-only behaviour is unchanged when Kernel is absent,
@@ -123,7 +126,10 @@ V0 -> V12.
   - UT `test_reader.py` with a fake router:
     - research-cited pages are rendered first;
     - a supporting snippet skips the screen;
-    - a screened-out page is never rendered;
+    - with URLs that fit the budget, every page is rendered and no screen call is made (B2);
+    - a page whose plain text has no statement but whose browser text has one is rendered and
+      yields its candidate whenever the budget allows (B2, or B4 after the screened-in pages);
+    - a screened-out page is rendered while budget remains after the screened-in pages;
     - a static-vs-browser text mismatch yields candidates only from browser text;
     - the budget never exceeds 80.
   - UT `test_rate_limit.py`:
