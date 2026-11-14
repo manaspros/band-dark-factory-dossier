@@ -6,10 +6,11 @@ import asyncio
 from starlette.requests import Request
 
 from app.auth import hash_password
-from app.clock import parse_rfc3339
+from app.clock import format_time, parse_rfc3339
 from app.errors import invalid, malformed
 from app.http import json_response, no_content, read_json, read_json_object
-from app.store import FORMAT_VERSION, TRACK, State, User, email_key, export_state, import_state
+from app.store import State, User, email_key
+from app.transfer import FORMAT_VERSION, TRACK, export_state, import_state
 
 
 async def health(services, request: Request):
@@ -48,8 +49,11 @@ async def reset(services, request: Request):
     state = State()  # critical section: swap state and set the clock together
     for user, password_hash in zip(users, hashes):
         state.add_user(User(user["id"], user["email"], user["display_name"], password_hash))
-    services.store.replace(state)
-    services.clock.reset_to(now)
+    with services.store.transaction() as writer:
+        writer.put_state(state)
+        writer.set_clock(format_time(now))
+        services.store.replace(state)
+        services.clock.reset_to(now)
     return no_content()
 
 
@@ -57,7 +61,11 @@ async def set_clock(services, request: Request):
     body = await read_json_object(request)
     if "now" not in body:
         raise invalid("now is required")
-    services.clock.set(parse_rfc3339(body["now"]))
+    now = parse_rfc3339(body["now"])
+    services.clock.check_set(now)
+    with services.store.transaction() as writer:
+        writer.set_clock(format_time(now))
+        services.clock.set(now)
     return no_content()
 
 
@@ -68,5 +76,8 @@ async def export(services, request: Request):
 
 async def import_(services, request: Request):
     payload = await read_json(request)
-    services.store.replace(import_state(payload))
+    state = import_state(payload)
+    with services.store.transaction() as writer:
+        writer.put_state(state)
+        services.store.replace(state)
     return no_content()

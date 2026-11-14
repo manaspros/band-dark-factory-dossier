@@ -62,8 +62,8 @@ def test_permutation_invariant():
 
 
 def test_status_value_citations_and_selected():
-    assert decide_field([]) == {"value": None, "status": "unknown", "citations": [],
-                                "candidates": []}
+    assert decide_field([]) == {"value": None, "status": "unknown", "true_from": None,
+                                "learned_at": None, "citations": [], "candidates": []}
     one = decide_field([cand("Dana Ruiz", "https://a.test/1"),
                         cand("Dana Ruiz", "https://b.test/1", "news")])
     assert one["status"] == "known" and one["value"] == "Dana Ruiz"

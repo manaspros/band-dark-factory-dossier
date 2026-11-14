@@ -46,8 +46,10 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def issue_token(store: Store, user_id: str) -> str:
+def issue_token(store: Store, user_id: str, writer) -> str:
+    """A new bearer token for ``user_id``, written with ``writer`` (an open transaction)."""
     token = secrets.token_urlsafe(32)
+    writer.put_token(token_digest(token), user_id)
     store.state.tokens[token_digest(token)] = user_id
     return token
 
@@ -96,8 +98,10 @@ async def signup(store: Store, request: Request):
     if email_key(email) in state.emails:
         raise _email_taken()
     user = User(state.new_id("u"), email, display_name, password_hash)
-    state.add_user(user)
-    token = issue_token(store, user.id)
+    with store.transaction() as writer:
+        writer.put_user(user)
+        state.add_user(user)
+        token = issue_token(store, user.id, writer)
     return json_response(201, {"user_id": user.id, "display_name": display_name, "token": token})
 
 
@@ -110,6 +114,7 @@ async def login(store: Store, request: Request):
         raise unauthenticated()
     if store.state.users.get(user.id) is not user:  # state replaced while hashing
         raise unauthenticated()
-    token = issue_token(store, user.id)
+    with store.transaction() as writer:
+        token = issue_token(store, user.id, writer)
     return json_response(200, {"user_id": user.id, "display_name": user.display_name,
                                "token": token})

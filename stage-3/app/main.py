@@ -1,8 +1,9 @@
-"""The Dossier HTTP service (stage 1): routes, error envelope and startup."""
+"""The Dossier HTTP service: routes, error envelope and startup."""
 from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 
 from starlette.applications import Starlette
@@ -13,6 +14,7 @@ from starlette.routing import Route
 from app import auth, control, dossiers, ui_routes
 from app.build import Builds
 from app.clock import Clock
+from app.db import Database
 from app.errors import ApiError
 from app.http import error_response, json_response
 from app.store import Store
@@ -21,14 +23,19 @@ from app.web import WebClient
 log = logging.getLogger("dossier")
 
 
+DEFAULT_DATA_DIR = "/srv/data"
+
+
 @dataclass
 class Services:
-    """Everything a handler needs: the state, the clock and the build runner."""
+    """Everything a handler needs: the state, the clock and the build runner. The state and
+    the clock start as the database last held them (stage-3 "Restarts")."""
     store: Store = field(default_factory=Store)
     clock: Clock = field(default_factory=Clock)
     builds: Builds = field(init=False)
 
     def __post_init__(self) -> None:
+        self.clock.restore(self.store.db.clock())
         self.builds = Builds(self.store)
 
 
@@ -86,6 +93,9 @@ def create_app(services: Services | None = None, web_factory=WebClient) -> Starl
         Route("/dossiers", _endpoint(s, dossiers.create), methods=["POST"]),
         Route("/dossiers", _endpoint(s, dossiers.list_), methods=["GET"]),
         Route("/dossiers/{domain:path}/refresh", _endpoint(s, dossiers.refresh), methods=["POST"]),
+        Route("/dossiers/{domain:path}/history", _endpoint(s, dossiers.history), methods=["GET"]),
+        Route("/dossiers/{domain:path}/values", _endpoint(s, dossiers.values), methods=["GET"]),
+        Route("/changes", _endpoint(s, dossiers.changes), methods=["GET"]),
         # Browser screens (static shell); the evidence route must precede the shared one.
         Route("/", ui_routes.shell, methods=["GET"]),
         Route("/signup", ui_routes.shell, methods=["GET"]),
@@ -106,7 +116,10 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO)
     port = int(os.environ.get("PORT") or "8080")
-    uvicorn.run(create_app(), host="0.0.0.0", port=port, workers=1, log_level="warning",
+    data_dir = Path(os.environ.get("DATA_DIR") or DEFAULT_DATA_DIR)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    services = Services(store=Store(Database(str(data_dir / "dossier.db"))))
+    uvicorn.run(create_app(services), host="0.0.0.0", port=port, workers=1, log_level="warning",
                 access_log=False)
 
 

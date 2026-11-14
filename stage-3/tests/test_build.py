@@ -5,6 +5,7 @@ import time
 from app.budget import Budget
 from app.build import Build, Builds
 from app.store import Dossier, State, Store
+from app.support import FIELDS
 from tests.fakes import DOMAIN, PAGES, FakeWeb
 
 
@@ -17,7 +18,7 @@ def test_domain_query_refused_once_then_made_once():
     run(Build(DOMAIN, web))
     assert web.calls.count(("search", DOMAIN)) == 2
     searches = [a for m, a in web.calls if m == "search"]
-    assert len(searches) - searches.count(DOMAIN) == 7  # 6 field queries + the name
+    assert len(searches) - searches.count(DOMAIN) == 8  # 6 fields, executives, the name
 
 
 def test_domain_query_refused_three_times_continues_ready():
@@ -43,9 +44,9 @@ def test_budget_never_exceeds_cap_with_many_urls():
     web = FakeWeb(pages=pages)
     build = Build(DOMAIN, web)
     run(build)
-    assert web.count("extract") == (80 - 8 - 25) // 3      # rendered pages, 3 units each
+    assert web.count("extract") == (80 - 9 - 25) // 3      # rendered pages, 3 units each
     assert web.count("research") == 1
-    assert build.budget.charged == 8 + 25 + 15 * 3 <= 80
+    assert build.budget.charged == 9 + 25 + 15 * 3 <= 80
     assert build.unreached == 60 - 15
 
 
@@ -54,7 +55,7 @@ def test_lost_calls_are_charged_and_not_retried():
     build = Build(DOMAIN, web)
     run(build)
     assert web.count("extract") == len(PAGES)
-    assert build.budget.charged == 8 + 25 + 3 * len(PAGES)
+    assert build.budget.charged == 9 + 25 + 3 * len(PAGES)
 
 
 def test_research_runs_once_beside_the_searches():
@@ -65,7 +66,8 @@ def test_research_runs_once_beside_the_searches():
     assert web.count("research") == 1
     methods = [m for m, _ in web.calls]
     assert methods.index("research") < methods.index("extract")  # started before extracts
-    assert all(f["status"] == "known" for f in fields.values())
+    assert all(fields[f]["status"] == "known" for f in FIELDS)
+    assert fields["executives"]["status"] == "unknown"
 
 
 def test_claim_pages_are_read_and_claims_are_never_candidates():
@@ -125,7 +127,8 @@ def test_candidates_carry_build_time_kind_and_publication():
     assert candidate == {"value": 2014, "url": "https://news.test/a",
                          "excerpt": "Acme Robotics was founded in 2014.", "provider": "nimble",
                          "kind": "news", "published_at": "2026-01-10T00:00:00+00:00",
-                         "retrieved_at": "2026-03-01T09:00:00+00:00", "selected": True}
+                         "retrieved_at": "2026-03-01T09:00:00+00:00",
+                         "true_from": "2026-01-10", "learned_at": None, "selected": True}
 
 
 def test_citations_come_from_served_text():

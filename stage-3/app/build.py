@@ -3,8 +3,9 @@
 Plan, all through Nimble (plans/stage-2-plan.md "Build strategy"):
 
 A. At once: the lite searches (exactly one whose query is the bare normalised domain, one
-   per field with that field's statement phrases, one for the company name) and one
-   research run asking for all six fields.
+   per field with that field's statement phrases, one with the executive titles' phrases,
+   one for the company name) and one research run asking for the six fields of §4 only
+   (stage 3: research never asks for executives).
 B. When research has finished: a rendered extract (the browser text, 3 units) of every page
    a research claim cites, whether or not the claim holds; then rendered extracts of the
    search result pages in priority order (snippet already states a value, then the
@@ -20,8 +21,9 @@ that waiting does not count toward the 10 s bound. Other refusals get up to 2 re
 While every attempt has answered within 1 s (the "fast regime"), no non-429 retry starts
 after 8 s of build time, which keeps the build within 10 s (§8).
 
-The build only writes to the store at the end, in one synchronous step, and only if no
-reset or import replaced the state meanwhile (§3.3, §10).
+The build only writes to the store at the end, in one synchronous step and one database
+transaction (app.commit), and only if no reset or import replaced the state meanwhile
+(§3.3, §10). A build cut short by a crash leaves nothing behind (stage-3 "Restarts").
 """
 from __future__ import annotations
 
@@ -34,8 +36,12 @@ from urllib.parse import urlsplit
 from app.budget import Budget, cost_of
 from app.candidates import from_page
 from app.clock import format_time
-from app.selection import Candidate, decide
-from app.support import FIELDS, STATEMENT_PHRASES, candidates as supported, company_name
+from app.commit import record_build
+from app.fields import decide
+from app.pages import page_true_from, published_at
+from app.selection import Candidate
+from app.support import (FIELDS, STATEMENT_PHRASES, TITLE_PHRASES, candidates as supported,
+                         company_name)
 from app.web import PROVIDER, CallOutcome, WebClient
 
 log = logging.getLogger("dossier.build")
@@ -68,6 +74,14 @@ SIX_FIELD_SCHEMA = {
 def field_queries(domain: str) -> list[str]:
     """One query per field: the domain plus that field's statement phrases."""
     return [f"{domain} {' '.join(STATEMENT_PHRASES[field])}" for field in FIELDS]
+
+
+def executives_query(domain: str) -> str:
+    """The domain plus every executive title's statement phrases (lead ruling: one lite
+    search for executive pages; research still asks for the six fields only)."""
+    phrases = [p for title in TITLE_PHRASES.values() for p in title]
+    lowercase = [p for p in phrases if not p.isupper()]
+    return f"{domain} {' '.join(lowercase + [p for p in phrases if p.isupper()])}"
 
 
 def research_query(domain: str) -> str:
@@ -104,6 +118,7 @@ class Build:
         self.succeeded = False       # some provider call succeeded
         self.fast = True             # every attempt so far answered within 1 s
         self.candidates: list[Candidate] = []
+        self.pages: dict[str, str | None] = {}   # url -> true_from of every page read
         self.unreached = 0           # search pages the budget did not reach (DEV-S2)
         self._started = time.monotonic()
         self._rate_limit_waits: list[tuple[float, float]] = []
@@ -173,7 +188,8 @@ class Build:
     # ------------------------------------------------------------------ phases
 
     def queries(self) -> list[str]:
-        return [self.domain, *field_queries(self.domain), company_name(self.domain)]
+        return [self.domain, *field_queries(self.domain), executives_query(self.domain),
+                company_name(self.domain)]
 
     async def search_all(self) -> list[tuple[str, str]]:
         """The lite searches, at once: every (url, snippet) they return."""
@@ -203,6 +219,8 @@ class Build:
         async def one(url: str) -> None:
             outcome = await self.call(RENDER_UNITS, lambda: self.web.extract_rendered(url))
             for page in (outcome.pages if outcome and outcome.ok else []):
+                self.pages.setdefault(page.url, page_true_from(page.text,
+                                                               published_at(page.text)))
                 self.candidates.extend(from_page(page.url, page.text, PROVIDER, self.domain,
                                                  self.retrieved_at))
 
@@ -264,11 +282,10 @@ class Builds:
         current = self.store.state.dossiers.get(dossier.domain)
         if self.store.generation != generation or current is not dossier:
             return  # state was reset or imported meanwhile: write nothing
-        dossier.spent_units += build.budget.charged
         dossier.build = None
-        if fields is None:
-            dossier.outcome = "failed"
-        else:
-            dossier.fields = fields
-            dossier.outcome = "ready"
-            dossier.researched_at = format_time(build_time)
+        ready = fields is not None
+        with self.store.transaction() as writer:
+            record_build(self.store.state, dossier, writer, format_time(build_time),
+                         build.budget.charged,
+                         build.candidates if ready else None,
+                         [{"url": url, "true_from": tf} for url, tf in build.pages.items()])

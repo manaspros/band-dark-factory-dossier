@@ -37,11 +37,19 @@ class Clock:
             return datetime.now(timezone.utc).replace(microsecond=0)
         return self._now
 
-    def set(self, value: datetime) -> None:
-        """Move the clock to ``value``; 422 when that is earlier than now."""
+    def check_set(self, value: datetime) -> None:
+        """422 when ``value`` is earlier than now (the clock cannot move back)."""
         if value < self.now():
             raise invalid("the clock cannot move back")
+
+    def set(self, value: datetime) -> None:
+        """Move the clock to ``value``; 422 when that is earlier than now."""
+        self.check_set(value)
         self._now = value
+
+    def restore(self, saved: str | None) -> None:
+        """The clock as last saved (app.db): standing at that time, or system time if unset."""
+        self._now = parse_rfc3339(saved) if saved is not None else None
 
     def reset_to(self, value: datetime) -> None:
         """Reset sets the clock to the fixture's ``now``, whatever it was."""

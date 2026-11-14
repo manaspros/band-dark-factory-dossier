@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import unquote
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -51,6 +52,16 @@ def require_str(body: dict, name: str) -> str:
     if not isinstance(value, str):
         raise malformed(f"{name} must be a string")
     return value
+
+
+def query_text(request: Request, name: str) -> str | None:
+    """A query parameter's first value, percent-decoded but with `+` kept as `+` (so an
+    unencoded RFC 3339 offset such as `+00:00` reads as written), or None when absent."""
+    for part in request.scope.get("query_string", b"").decode("latin-1").split("&"):
+        key, sep, value = part.partition("=")
+        if unquote(key) == name:
+            return unquote(value) if sep else ""
+    return None
 
 
 def query_int(request: Request, name: str, default: int, low: int, high: int | None) -> int:

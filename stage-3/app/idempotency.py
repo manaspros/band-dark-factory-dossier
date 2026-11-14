@@ -47,7 +47,9 @@ def replay(state: State, record_key: tuple, print_: str):
     return json_response(200, record.body)
 
 
-def remember(state: State, record_key: tuple, print_: str, status: int, body: dict):
-    """Store a successful response and return it."""
-    state.idempotency[record_key] = IdempotencyRecord(print_, status, body)
+def remember(state: State, writer, record_key: tuple, print_: str, status: int, body: dict):
+    """Store a successful response (with ``writer``, an open transaction) and return it."""
+    record = IdempotencyRecord(print_, status, body)
+    writer.put_idempotency(record_key, record)
+    state.idempotency[record_key] = record
     return json_response(status, body)

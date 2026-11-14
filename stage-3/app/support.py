@@ -34,6 +34,16 @@ STATEMENT_PHRASES: dict[str, tuple[str, ...]] = {
     "funding_total": ("raised", "funding", "invested", "investment"),
 }
 
+# Stage-3 executives: each title is an Appendix A field with the format and normalisation
+# of `ceo` and these statement phrases in place of the ceo ones.
+TITLES = ("cfo", "coo", "cto")
+TITLE_PHRASES: dict[str, tuple[str, ...]] = {
+    "cfo": ("chief financial officer", "CFO"),
+    "coo": ("chief operating officer", "COO"),
+    "cto": ("chief technology officer", "CTO"),
+}
+_PHRASES = {**STATEMENT_PHRASES, **TITLE_PHRASES}
+
 # A.3 negating phrases, verbatim.
 NEGATING_PHRASES = ("in talks to", "plans to", "planning to", "wants to", "expects to",
                     "hopes to", "aims to", "seeking", "could", "would", "might", "reportedly",
@@ -368,9 +378,10 @@ def _hq_cities(text: str, folded: str) -> set:
     return values
 
 
-def _ceo_names(text: str, folded: str, domain: str) -> set:
+def _person_names(text: str, folded: str, domain: str, phrases: tuple[str, ...]) -> set:
+    """Person names (A.4 `ceo` format) once the company name and ``phrases`` are removed."""
     removed = _find_phrase(folded, company_name(domain))
-    for phrase in STATEMENT_PHRASES["ceo"]:
+    for phrase in phrases:
         removed += _find_phrase(folded, phrase)
     kept = [w for w in _capitalised_words(text)
             if all(w.end <= s or w.start >= e for s, e in removed)]
@@ -419,8 +430,8 @@ def _values(field: str, text: str, folded: str, domain: str) -> set:
         return _legal_names(text, folded, domain)
     if field == "hq_city":
         return _hq_cities(text, folded)
-    if field == "ceo":
-        return _ceo_names(text, folded, domain)
+    if field == "ceo" or field in TITLE_PHRASES:
+        return _person_names(text, folded, domain, _PHRASES[field])
     if field == "founded_year":
         return _years(text)
     if field == "headcount_range":
@@ -440,9 +451,9 @@ def names_company(excerpt: str, domain: str) -> bool:
 def supports(excerpt: str, field: str, domain: str):
     """The value ``excerpt`` supports for ``field`` of the company at ``domain``, or None.
 
-    ``domain`` must already be normalised. The returned value is normalised per A.5:
-    a string for legal_name/hq_city/ceo/headcount_range, an int for founded_year and
-    funding_total.
+    ``field`` is one of FIELDS or an executive title (TITLES). ``domain`` must already be
+    normalised. The returned value is normalised per A.5: a string for legal_name/hq_city/
+    ceo/headcount_range and the titles, an int for founded_year and funding_total.
     """
     text = collapse(excerpt)
     if not text or not is_single_sentence(text):
@@ -450,7 +461,7 @@ def supports(excerpt: str, field: str, domain: str):
     folded = _fold(text)
     if not (_find_phrase(folded, company_name(domain)) or _find_phrase(folded, domain)):
         return None
-    if not any(_find_phrase(folded, p) for p in STATEMENT_PHRASES[field]):
+    if not any(_find_phrase(folded, p) for p in _PHRASES[field]):
         return None
     if any(_find_phrase(folded, p) for p in NEGATING_PHRASES):
         return None
@@ -465,8 +476,9 @@ class Support:
     excerpt: str
 
 
-def candidates(text: str, domain: str, fields: tuple[str, ...] = FIELDS) -> list[Support]:
-    """Every (field, value, excerpt) a page's prose supports, in page order.
+def candidates(text: str, domain: str,
+               fields: tuple[str, ...] = FIELDS + TITLES) -> list[Support]:
+    """Every (field or title, value, excerpt) a page's prose supports, in page order.
 
     Excerpts are whole sentences with whitespace collapsed, 1 to 500 characters long.
     """
