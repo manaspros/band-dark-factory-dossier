@@ -1,0 +1,8 @@
+#!/bin/sh
+# Band seat launcher: clean harness home, per-seat git identity, no commit signing.
+# GUI apps do not inherit the shell PATH; add the usual per-user install dirs.
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export CODEX_HOME="$HOME/.codex-band"
+export GIT_AUTHOR_NAME="Verifier" GIT_AUTHOR_EMAIL="verifier@factory.example" GIT_COMMITTER_NAME="Verifier" GIT_COMMITTER_EMAIL="verifier@factory.example"
+export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=commit.gpgsign GIT_CONFIG_VALUE_0=false GIT_CONFIG_KEY_1=tag.gpgsign GIT_CONFIG_VALUE_1=false
+exec codex "$@"
