@@ -142,6 +142,10 @@ input[type="text"], input[type="email"], input[type="password"], input[type="sea
 .field-card__value { font-size: var(--text-xl); font-weight: 700; overflow-wrap: anywhere; }
 .field-card__value--none { font-size: var(--text-md); font-weight: 400; color: var(--muted); font-style: italic; }
 .contested-note { font-size: var(--text-sm); color: var(--contested-ink); }
+.members { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3);
+           margin: 0; min-width: 0; }
+.members dt { color: var(--muted); font-size: var(--text-sm); align-self: center; }
+.members dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
 .citations { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .citation { border-left: 3px solid var(--line); padding: 2px 0 2px var(--space-3); min-width: 0; }
 .citation blockquote { margin: 0; font-style: italic; overflow-wrap: anywhere; }

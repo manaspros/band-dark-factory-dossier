@@ -1,12 +1,14 @@
-// `/dossiers/{domain}`: one dossier, its six fields with value, status and citations.
+// `/dossiers/{domain}`: one dossier, its six fields with value, status and citations, and
+// (stage 3) its executives, shown with their own markup and no data-testid.
 //
 // The latest read always wins (reader.js). While the dossier is building, it is read again
 // every 1.5 s until it is ready or failed.
 
 import { request } from "../api.js";
 import { banner, chip, h, replace } from "../dom.js";
-import { FIELDS, FIELD_LABELS, STATE_LABELS, STATUS_LABELS, formatDateTime, hostOf,
-         providerLabel, rawValue, units, valueParts } from "../format.js";
+import { EXECUTIVES, EXECUTIVES_LABEL, FIELDS, FIELD_LABELS, STATE_LABELS, STATUS_LABELS,
+         TITLE_LABELS, formatDateTime, hostOf, providerLabel, rawValue, units,
+         valueParts } from "../format.js";
 import { createPoller, createReader } from "../reader.js";
 import { submitWrite } from "../writes.js";
 
@@ -27,7 +29,7 @@ export function notFound(main, domain) {
 }
 
 function citation(field, c, n) {
-  return h("li", { class: "citation", testid: `citation-${field}-${n}`,
+  return h("li", { class: "citation", testid: field === EXECUTIVES ? null : `citation-${field}-${n}`,
                    "data-provider": c.provider },
     h("blockquote", {}, c.excerpt),
     h("p", { class: "source" },
@@ -54,6 +56,27 @@ function fieldCard(name, field) {
     h("ol", { class: "citations", testid: `field-citations-${name}`,
               "aria-label": `Sources for ${FIELD_LABELS[name]}` },
       field.citations.map((c, i) => citation(name, c, i + 1))));
+}
+
+function executivesCard(field) {
+  const members = field.value || [];
+  const contested = new Set(field.candidates.filter((c) =>
+    field.candidates.some((o) => o.title === c.title && o.value !== c.value)).map((c) => c.title));
+  return h("article", { class: "field-card", "data-section": EXECUTIVES,
+                        "data-status": field.status, "aria-labelledby": "label-executives" },
+    h("div", { class: "field-card__head" },
+      h("h2", { class: "field-card__label", id: "label-executives" }, EXECUTIVES_LABEL),
+      chip(field.status, STATUS_LABELS[field.status])),
+    members.length
+      ? h("dl", { class: "members" }, members.map((m) => [
+          h("dt", {}, TITLE_LABELS[m.title] || m.title),
+          h("dd", { "data-title": m.title, "data-value": m.name }, m.name,
+            contested.has(m.title) && h("span", { class: "contested-note" },
+              " (sources disagree; best-ranked shown)"))]))
+      : h("p", { class: "field-card__value field-card__value--none" },
+          "No source names a CFO, COO or CTO yet."),
+    h("ol", { class: "citations", "aria-label": `Sources for ${EXECUTIVES_LABEL}` },
+      field.citations.map((c, i) => citation(EXECUTIVES, c, i + 1))));
 }
 
 export function mount(main, { domain }) {
@@ -107,7 +130,8 @@ export function mount(main, { domain }) {
         (d.researched_at ? "Showing the last successful results." : "Try refreshing.")),
     }[d.state];
     replace(body, status || null, h("div", { class: "fields" },
-      FIELDS.map((name) => fieldCard(name, d.fields[name]))));
+      FIELDS.map((name) => fieldCard(name, d.fields[name])),
+      d.fields[EXECUTIVES] && executivesCard(d.fields[EXECUTIVES])));
   }
 
   const refreshButton = h("button", { type: "button", class: "button button--primary",

@@ -8,6 +8,12 @@ export const FIELD_LABELS = {
   founded_year: "Founded", headcount_range: "Employees", funding_total: "Total funding",
 };
 
+// Stage 3: the seventh field. It never takes the six fields' data-testid names.
+export const EXECUTIVES = "executives";
+export const EXECUTIVES_LABEL = "Executives";
+export const TITLE_LABELS = { cfo: "Chief financial officer", coo: "Chief operating officer",
+                              cto: "Chief technology officer" };
+
 const KIND_LABELS = {
   own: "Company site", filing: "Filing registry", news: "News report",
   aggregator: "Data aggregator",
