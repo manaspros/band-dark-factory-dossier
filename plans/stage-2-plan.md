@@ -33,8 +33,8 @@ Starlette app (main.py)
   + ui/            index.html, styles.css, app.js (router), api.js, format.js, reader.js,
   |                list.js, dossier.js, evidence.js, contested.js, auth.js
 build.py (changed)  searches + research -> page queue -> reader -> candidates -> selection
-  + reader.py      BrowserTextReader: KernelReader (sessions.py pool) | NimbleRenderReader
-  + sessions.py    process-wide pool of at most 4 Kernel sessions
+  + reader.py      page pipeline: snippet screen -> plain-extract screen -> NimbleRenderReader
+  (+ sessions.py   Kernel pool, only if V1b is triggered)
   + pages.py       kind / published_at from header lines (S3-S6)
   + candidates.py  page text -> candidates (field, value, url, excerpt, provider, kind, published_at)
   + selection.py   rank, select, status, citations (S34-S44)
@@ -51,25 +51,29 @@ front-end dependencies, and another developer can read it directly. The trade-of
 DOM rendering is hand-written. To keep that manageable, each screen module exports
 `render(state)` that builds DOM with a tiny `h(tag, attrs, children)` helper in `app.js`.
 
-## Build strategy (per build, cap 80)
+## Build strategy (per build, cap 80; Nimble-only, lead decision 4)
 
 | Step | Calls | Units |
 |---|---|---|
 | A (at once) | 8 lite searches (exact domain + 6 field queries + company name), as stage 1 | 8 |
-| A (at once) | research run, all six fields (S117) | 25 |
-| B | page reads in priority order (E3): research-cited URLs first (they arrive when research completes), then search URLs ranked by top-3 hits across field queries, then the rest | Kernel 1/page, up to 47 pages; Nimble render 3/URL, up to 15 |
-| C | candidates from every page read -> selection -> fields | 0 |
+| A (at once) | research run, all six fields (S117, confirmed) | 25 |
+| B1 | rendered extract of research-cited URLs (as soon as research completes) | 3 each |
+| B2 | free snippet screen of search URLs; a supporting snippet sends the URL straight to B4 | 0 |
+| B3 | plain-extract screen (served text, never cited) of the remaining search URLs, all at once | 1 each |
+| B4 | rendered extract of every screened-in page, ranked by field-query top-3 hits, within the budget | 3 each |
+| C | candidates from rendered text only -> selection -> fields | 0 |
 
-- **Reader selection (S12, S13):** use `KernelReader` when `KERNEL_API_KEY` is set and an open
-  succeeds. Otherwise use `NimbleRenderReader`. If a Kernel session dies mid-build, its unread
-  pages go to the Nimble reader within the remaining budget.
-- **Page reading with Kernel:** take up to 4 sessions from the pool. Each session pulls URLs
-  from a shared queue: `goto(url)`, then `read(format="text")`, with no clicks. Reserve 1 unit
-  before each `goto`. Settle 1 when a page is served, and 0 on a navigation failure. Release
-  sessions in `finally` (release is free).
-- **Research-cited pages arriving late:** search pages start reading at once, but the build
-  holds back an allowance for up to 3 research-cited pages. When research completes, its URLs
-  go to the front of the queue. Any allowance they do not use returns to the queue.
+- **Budget split:** of the 47 units left after step A, 3 renders (9 units) are reserved for
+  research-cited pages until research completes. Unused reserve returns to B4. B3 is skipped
+  for a URL when its B4 render could no longer be afforded.
+- **Why the screen (E3):** plain served text equals browser text except on browser-only pages,
+  and those are rendered whenever their served text has a statement. So 1 unit spent per page
+  avoids a 3-unit render of a page that carries no candidate. The residual risk is matrix
+  Open-S4. The verifier checks it with a Nimble-only harness run.
+- **Kernel (V1b, conditional):** added only if the verifier's harness run shows that
+  Nimble-only misses candidates within 80 units. If added, it serves only pages the Nimble
+  pipeline could not afford. Nimble-only behaviour is unchanged when Kernel is absent,
+  failing, or its 4 sessions are exhausted.
 - **Retries (S20-S23, C-S1):**
   - 429 gets up to 3 retries, each after 1.05 s. The wait is recorded as a 429 interval.
   - Other refusals get up to 2 retries after 1.05 s (stage-1 L1 / lead carry-over).
@@ -79,13 +83,10 @@ DOM rendering is hand-written. To keep that manageable, each screen module expor
 - **Build clock (S23):** `Build.effective_elapsed()` is wall time minus the union of
   429-wait intervals. The stage-1 fast-regime cut-off reads this clock, and 429 retries are
   exempt from the cut-off.
-- **Timing check:** with calls of 1 s or less and Kernel at 4 sessions, step A takes about 1 s
-  (searches) in parallel with about 3 s (research). About 25 pages over 4 sessions at 1 s or
-  less each is about 7 s. That totals about 8 s, plus the research-cited pages, which load at
-  the front once research completes. For a large company the build is at risk near 10 s. The
-  plan lets each session pull up to 6 pages before research completes, and prioritises
-  field-query hits. If the verifier measures more than 10 s, the next lever is capping
-  lower-priority pages (decision for lead, not taken silently).
+- **Timing check:** with calls of 1 s or less, the steps run in sequence: step A (about 1 s
+  for searches, about 3 s for research in parallel), then B3 all at once (about 1 s), then B4
+  all at once (about 1 s), then the research-cited renders (about 1 s). That is about 5-6 s,
+  plus excluded 429 waits.
 
 ## Work items
 
@@ -94,35 +95,64 @@ V0 -> V12.
 
 ### V0 Copy and keep
 - **Changes:** `cp -R stage-1 stage-2` without caches, then update `RUN.md` (stage-2 name and
-  the new env vars), `requirements.txt` (`webrouter[search,extract,research,browser]>=0.12.0`,
-  which adds Playwright for the CDP driver; Open-S3) and the Dockerfile (no browser download
-  needed; Kernel's browser is remote).
+  the new env vars) and `requirements.txt`, which stays `webrouter[search,extract,research]>=0.12.0`.
+  The `[browser]` extra is added only in V1b.
 - **Rows:** S1, S118, S62.
 - **Proof:** the stage-1 unit tests pass inside `stage-2/`; harness stage-1 checks keep passing
   under `--stage 2`.
 - **Files:** `stage-2/Dockerfile`, `stage-2/RUN.md`, `stage-2/requirements*.txt`.
 
-### V1 Web access, reader, sessions, rate limits, budget
+### V1 Web access, Nimble read pipeline, rate limits, budget
 - **Changes:**
-  - `web.py`: `extract_rendered(url)` with `provider_options={"render": True}`;
-    `open_kernel()` via `AsyncWebRouter.open_browser(provider="kernel")`;
-    `provider_config["kernel"]["base_url"]` from env when set; `classify_failure` returns
-    `refused_429` separately.
-  - `budget.py`: new costs (S15-S17).
-  - `sessions.py`: a pool built on an `asyncio.Semaphore(4)`.
-  - `reader.py`: `KernelReader` and `NimbleRenderReader`, both returning
-    `PageText(url, text, provider)`.
-  - `build.py`: the call wrapper with 429 handling and the effective clock.
-- **Rows:** S7, S8, S10-S23, S25, S117, S119.
-- **Proof:** UT `test_reader.py` with a fake router covering: the Kernel happy path; a failed
-  `goto` is free; a session dies and the build falls back to render; 3 concurrent builds never
-  hold more than 4 sessions. UT `test_rate_limit.py` covering: 429 three times and then 200
-  is read; 500 three times is dropped after 2 retries; the effective clock excludes waits.
-  UT `test_budget.py` for the new costs.
-- **Edges:** no `KERNEL_API_KEY`; `KERNEL_BASE_URL` unset; a page 404 inside a session; budget
-  exhausted mid-queue; a reset during a build (generation check, stage-1 R31) releases sessions.
-- **Files:** `stage-2/app/{web,budget,sessions,reader}.py`, the call and gather parts of
+  - `web.py`: `extract_rendered(url)` with `provider_options={"render": True}`. The existing
+    plain `extract` (`stage-1/app/web.py:102-108`) is kept for screening. `classify_failure`
+    reports `refused_429` separately.
+  - `budget.py`: the new costs (S15-S17).
+  - `reader.py`: the B1-B4 pipeline (E3), returning `PageText(url, text, provider="nimble")`
+    for rendered pages only.
+  - `build.py`: the call wrapper with 429 handling (3 retries, 1.05 s) and other refusals
+    (2 retries), and the effective clock (S23).
+- **Rows:** S7-S11, S13, S15, S20-S23, S25, S117, S119.
+- **Proof:**
+  - UT `test_reader.py` with a fake router:
+    - research-cited pages are rendered first;
+    - a supporting snippet skips the screen;
+    - a screened-out page is never rendered;
+    - a static-vs-browser text mismatch yields candidates only from browser text;
+    - the budget never exceeds 80.
+  - UT `test_rate_limit.py`:
+    - 429 three times, then 200, is read;
+    - 500 three times is dropped after 2 retries;
+    - the exact-domain search makes at most 3 attempts on 500s;
+    - the effective clock excludes 429 waits.
+  - UT `test_budget.py`: the new costs.
+  - The verifier runs the harness Nimble-only and compares candidate value sets with the
+    expected sets (Open-S4).
+- **Edges:** an empty search; every page screened out; render failures (charged, not retried
+  unless refused); a reset during a build (generation check, R31).
+- **Files:** `stage-2/app/{web,budget,reader}.py`, the call and gather parts of
   `stage-2/app/build.py`, and `stage-2/tests/test_{reader,rate_limit,budget}.py`.
+
+### V1b Kernel reader (conditional; only if the harness shows Nimble-only is incomplete)
+- **Trigger:** the verifier's Nimble-only harness run shows missing candidate values within
+  80 units.
+- **Changes:**
+  - Add `[browser]` to the webrouter extras, with Playwright pinned to a version at least
+    7 days old (Open-S3).
+  - `sessions.py`: a pool of at most 4 sessions (E4).
+  - `KernelReader` for the pages the Nimble pipeline could not afford.
+  - `provider_config["kernel"]["base_url"]` from env.
+- **Must hold:**
+  - The image builds reliably and `/health` answers within 60 s.
+  - Nimble-only results are identical when `KERNEL_API_KEY` is absent, opening fails, or the
+    sessions are exhausted (an open answered 429 at the cap falls back).
+- **Rows:** S12, S14, S16-S19.
+- **Proof:** UT:
+  - the pool holds at most 4 sessions across 3 builds;
+  - a failed `goto` is free;
+  - a session that dies falls back to render;
+  - with no key, the results equal the Nimble-only run.
+- **Files:** `stage-2/app/{sessions,reader}.py`, `stage-2/requirements.txt`.
 
 ### V2 Page kind and publication time
 - **Changes:** `pages.py: page_meta(url, text, domain) -> (kind, published_at)`, using the
@@ -303,16 +333,15 @@ S1-S120 each map to at least one V item (see the matrix "Where" column). Pure pe
 (S107, S115) need no code. Stage-1 rows changed by stage 2 are listed in the matrix; all others
 are carried by V0.
 
-## For lead (decisions requested)
+## Lead decisions (settled)
 
-1. **G1:** resolved by lead ruling as accepted limitation DEV-S1 (see V6 and matrix E18).
-2. **C-S1:** give 429 refusals 3 retries (spec allows three 429s in a row; the wait is
-   excluded from the 10 s clock). Other refusals keep the cap of 2.
-3. **C-S2:** research in every build (25 units), because research-cited pages are evidence and
-   are often top-authority filings.
-4. Using Kernel when configured (1 unit/page) instead of Nimble render (3/URL). Without it,
-   only about 15 pages fit the budget, and candidate sets would be incomplete for companies
-   with 15-24 pages.
+1. **G1:** accepted limitation DEV-S1 (V6, matrix E18).
+2. **C-S1:** confirmed. A 429 gets 3 retries 1.05 s apart, with the waits excluded from the
+   build clock. Other refusals keep the cap of 2. The exact-domain search keeps 3 attempts for
+   non-429 refusals.
+3. **C-S2:** confirmed. Research runs in every build.
+4. **Kernel:** Nimble rendered extract is primary and complete on its own (E3). Kernel is added
+   only via V1b, if the harness shows it is needed.
 
 ## Unverified
 

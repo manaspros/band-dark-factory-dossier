@@ -38,8 +38,8 @@ Column key as in stage 1.
 | S9 | "Evidence (§4) is read from page text so defined, and a citation's excerpt must appear in the page's text." | Excerpts are sentences of the browser text (whitespace-collapsed). | S2 `assert_citations` (partial); UT provenance | V4 |
 | S10 | "A citation's `provider` is the provider that served the text the excerpt was copied from." | `nimble` for rendered extract, `kernel` for session reads. | UT provenance (`kernel` reader gives `kernel`) | V1, V4 |
 | S11 | "an extract through `nimble` may ask Nimble to load the page in a browser ...: `provider_options={"render": True}` on WebRouter's extract." | Nimble path: `extract(url, provider="nimble", provider_options={"render": True})`. | RD; verifier: mock `/calls` shows `render: true` | V1 `web.py` |
-| S12 | "Two optional browser vendors are also available ...: `kernel`, through `open_browser`; `browserbase`, through `open_browser` and `browse`." | Kernel is used when `KERNEL_API_KEY` is set (E3). Browserbase is never used (it opens at 2 units and has no benefit over Kernel). | RD | V1 |
-| S13 | "A service may use Nimble's rendered extract alone to obtain every page's browser text; neither browser vendor is required." | Nimble-only must work: when Kernel is absent or fails to open, the reader falls back to rendered extract. | UT reader selection; live judging uses Nimble only | V1 |
+| S12 | "Two optional browser vendors are also available ...: `kernel`, through `open_browser`; `browserbase`, through `open_browser` and `browse`." | **Lead decision 4:** Nimble rendered extract is the primary, required path. Kernel is added (V1b) only if a harness run shows Nimble alone cannot gather the full candidate set within 80 units. Browserbase is never used. | RD | V1, V1b |
+| S13 | "A service may use Nimble's rendered extract alone to obtain every page's browser text; neither browser vendor is required." | Nimble-only is complete on its own (E3): free snippet screening, then 1-unit plain-extract screening, then 3-unit rendered extract of every page that can carry a candidate. If Kernel is ever added, Nimble-only keeps working when Kernel is absent, failing, or its sessions are exhausted. | UT `test_reader.py` (no Kernel key gives Nimble only; Kernel failure falls back); verifier harness run with Nimble only | V1 |
 | S14 | "A service that uses these vendors passes their base URLs to WebRouter in `provider_config`" `{"kernel": {"base_url": <KERNEL_BASE_URL>}, ...}` | `provider_config["kernel"] = {"base_url": env}` only when set. Keys are never read by the service. | RD | V1 `web.py` |
 | S15 | Cost: "Extract through `nimble` that loads the page in a browser - 3 per URL requested, including a URL for which no page is returned" | `cost_of("nimble","extract",render=True)=3`, charged unless refused. | UT `test_budget.py` | V1 `budget.py` |
 | S16 | Cost: "Open a session through `kernel` 0"; "`browserbase` 2"; "Each page served to a session, through either 1"; "Browse run through `browserbase` 4" | Kernel page load: reserve 1, settle 1 on a served page. A failed load is free. | UT | V1 |
@@ -53,7 +53,7 @@ Column key as in stage 1.
 |---|---|---|---|---|
 | S20 | "a provider may answer any call with 429. A call answered 429 costs nothing" | 429 is a refusal (0 units). | UT | V1 build |
 | S21 | "The same call ... made again less than one second after a 429 for it was answered is answered 429 again." | Wait 1.05 s before retrying after a 429 (lead carry-over). | UT fake clock | V1 |
-| S22 | "No call is answered 429 more than three times in a row, except that opening a session while its provider keeps 4 open ... is answered 429 until one of them closes." | A 429 gets up to **3** retries (4 attempts), so the 4th attempt is guaranteed past the 429 streak. Other refusals keep the stage-1 cap of 2 retries. **Flagged for lead (C-S1)**: this raises the stage-1 L1 cap for 429 only. A session open that is 429 at the cap falls back to rendered extract. | UT (429 x3 then 200 is read; 500 x3 is dropped) | V1 |
+| S22 | "No call is answered 429 more than three times in a row, except that opening a session while its provider keeps 4 open ... is answered 429 until one of them closes." | A 429 gets up to **3** retries (4 attempts), so the 4th attempt is guaranteed past the 429 streak. Other refusals keep the stage-1 cap of 2 retries. **Confirmed by lead (C-S1)**: this raises the stage-1 L1 cap for 429 only. A session open that is 429 at the cap falls back to rendered extract. | UT (429 x3 then 200 is read; 500 x3 is dropped) | V1 |
 | S23 | "Time a build spends waiting to make a call again after a 429 does not count toward the 10 seconds of `stage-1.md` §8." | Build clock = wall time minus the union of 429-wait intervals. The stage-1 fast-regime cut-off uses this clock, and 429 retries are not cut off by it. | UT `test_build.py::clock_excludes_429_waits` | V1 `build.py` |
 
 ## Candidates
@@ -208,7 +208,7 @@ Column key as in stage 1.
 
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
-| S117 | "spend units only where they change a field" (lead) | Research runs in every build. Its cited pages are evidence (S25) and are often non-searchable `filing` pages, which have top authority and so can change the selected value and the status. The stage-1 conditional rule (D28) no longer holds. Page reads are ranked so the budget goes to pages most likely to carry candidates (E3). **Flagged for lead (C-S2)**. | verifier `/calls` per build | V1 |
+| S117 | "spend units only where they change a field" (lead) | Research runs in every build. Its cited pages are evidence (S25) and are often non-searchable `filing` pages, which have top authority and so can change the selected value and the status. The stage-1 conditional rule (D28) no longer holds. Page reads are screened so the budget goes to pages that can carry candidates (E3). **Confirmed by lead (C-S2)**. | verifier `/calls` per build | V1 |
 | S118 | "stage-1/ frozen" | No edits under `stage-1/`. | CMD `git diff 1135775 -- stage-1` is empty | V0 |
 | S119 | Lead carry-over: "retry cap 2 with 1.05 s backoff; exact-domain search max 3 attempts; hq_city per A.4" | Kept, except S22 (429 gets 3 retries, flagged) and S39 (hq_city selection now follows the spec rule; A.4 extraction is unchanged). | RD | V1, V3 |
 | S120 | Judging: "coherent, responsive (375 px and desktop, no horizontal scroll), clear in every state ..., labels, visible focus and contrast" (brief) | Same as S52-S61. | E2E + screenshots | V8 |
@@ -248,25 +248,36 @@ Column key as in stage 1.
   The import validator is widened to accept both field shapes: the stage-1 shape (exactly
   `value`, `status` known/unknown, `citations`) and the stage-2 shape (with `candidates`, and
   status known/contested/unknown). Rows S108, S109, S114.
-- **C-S1 (S22), flagged for lead.** The spec allows up to three 429s in a row for the same call.
-  Lead ruling L1's cap of 2 retries would drop a call that is refused three times. The plan gives
-  429 refusals 3 retries (1.05 s apart, excluded from the 10 s clock by S23). It keeps the cap
-  of 2 for other refusals and for the exact-domain search's 3-attempt limit on non-429
-  refusals.
-- **C-S2 (S117), flagged for lead.** Research becomes unconditional (25 units) because its cited
+- **C-S1 (S22), confirmed by lead.** A 429 refusal gets 3 retries, 1.05 s apart, and the waits
+  are excluded from the build clock (S23). Other refusals keep the cap of 2. The exact-domain
+  search keeps 3 attempts for non-429 refusals.
+- **C-S2 (S117), confirmed by lead.** Research runs in every build (25 units), because its cited
   pages are evidence.
 - **E1** Header values are taken after `Kind:` with the line's surrounding spaces trimmed, and
   matched case-sensitively against the four kinds.
 - **E2** Browser text from Kernel is `browser.read(format="text")` after `goto`. The README
   says it returns an `ExtractedDocument`; whether it is the page's `innerText` is unverified
   (Open-S1).
-- **E3** Reader choice and budget: with Kernel configured, page reads cost 1 each, so
-  searches 8 + research 25 leaves up to 47 page reads. Nimble-only rendered extract costs 3,
-  which leaves 15 pages. Read order: research-cited URLs, then URLs ranked by how many of the
-  6 field queries returned them in their top 3, then the rest in search order.
-- **E4** One process-wide pool of at most 4 Kernel sessions. A build takes up to 4 sessions,
-  each loading pages one after another, and releases them in `finally`. Concurrent builds share
-  the pool.
+- **E3** (lead decision 4) Nimble-only read pipeline. After 8 search units and 25 for
+  research, 47 units remain.
+  1. **Research-cited URLs** are always read with rendered extract (3 each), first. They are
+     evidence (S25) and are often non-searchable filings.
+  2. **Free snippet screen:** a search URL whose lite snippet (the served prose prefix) already
+     contains a sentence that supports a value goes straight to rendered extract.
+  3. **Plain-extract screen (1 unit, never cited):** every other search URL is read once
+     with plain extract. Its served text is checked with `supports()`. A page with any
+     supporting sentence, or with a statement phrase and the company name in one sentence, is
+     queued for rendered extract. Other pages are dropped.
+  4. **Rendered extract** (3 each) of the queued pages, ranked by the number of field-query
+     top-3 hits. Candidates come only from rendered text (S7).
+
+  The screen spends 1 unit to avoid 3-unit renders of pages with no statement. For example,
+  20 URLs give 20 screen units, leaving 27 for 9 renders. Plain served text equals browser
+  text except on browser-only pages, and those are rendered whenever their served text has a
+  statement. The residual risk is Open-S4.
+- **E4** (only if V1b is triggered) A process-wide pool of at most 4 Kernel sessions. Page loads
+  cost 1, open costs 0, and sessions are released in `finally`. Kernel serves only pages the
+  Nimble pipeline could not afford. It is never required.
 - **E5** Per (field, value, page), the excerpt is the first supporting sentence in page order.
 - **E6** If a research-cited page cannot be read (budget or failure), that claim contributes
   no candidate.
@@ -296,6 +307,12 @@ Column key as in stage 1.
 - **Open-S2** Whether Nimble rendered extract through `provider_options={"render": True}` maps to
   the request field `render: true` (the mock bills `RENDER_COST` 3 on `render is True`, per
   `challenges/dossier/web/mockweb/nimble.py`). To settle: check the mock `/calls` log.
-- **Open-S3** The Playwright dependency for the `[browser]` extra adds image size. Version
+- **Open-S4** Screening assumes a page whose plain served text has no statement also has none
+  in its browser text. This fails only for a browser-only page whose static text has no
+  statement phrase. The sample corpus's browser-only pages all carry statements in their
+  static text (read from `challenges/dossier/web/corpus/sample`; harness material). To settle
+  it, the verifier compares Nimble-only candidate sets with the expected values in a harness
+  run. That comparison also triggers V1b if needed.
+- **Open-S3** (V1b only) The Playwright dependency for the `[browser]` extra adds image size. Version
   pinning must follow the org's 7-day release-age rule.
 - **Open-1..5** (stage 1) still apply.
