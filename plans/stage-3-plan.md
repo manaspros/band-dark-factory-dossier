@@ -42,8 +42,9 @@ startup: db.load() -> Store; health is 200 only after the load
 ```
 
 - **Durable store (lead note, T67-T74):** SQLite through the stdlib `sqlite3`, so no new
-  dependency. The file is `/app/data/dossier.db`, created in the Dockerfile and owned by the
-  app user.
+  dependency. The file is `/srv/data/dossier.db`. The Dockerfile creates `/srv/data` and
+  chowns it to the runtime user `dossier`, because `/srv` is root-owned (lead ruling; builder
+  notes R4).
   - Settings: `PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON`.
   - Tables: `meta(key, value)` (clock, clock_set, seq), `users`, `tokens`, `dossiers`,
     `builds(dossier_id, build_no, time, outcome, spent, fields_json, candidates_json)`,
@@ -214,10 +215,14 @@ its proof, and the edges it must hold.
   - `migrate.py` detects the shape (T55) and builds stage-3 state.
     - Stage-1: one ready build at `researched_at` (none if null). Versions come from citation
       URLs with `true_from` null. Initial history uses `true_from` null.
-    - Stage-2: one ready build at `researched_at` with the total spend (G3-1). Versions are
-      one per candidate URL, with `true_from` = UTC date of `published_at` (G3-2).
-      Candidate `learned_at` = `retrieved_at`. Initial history takes `true_from` from the
-      selected candidate's date.
+    - Stage-2 (lead rulings U1, U2, U4):
+      - one ready build at `researched_at` holding every exported candidate and the whole
+        spend (DEV-S3a); a null `researched_at` means no build, so every `as_of` is 404;
+      - versions are one per candidate URL, with `true_from` = the UTC date of `published_at`,
+        else null (DEV-S3b);
+      - candidate `learned_at` = `retrieved_at` (U4);
+      - initial history takes `true_from` from the selected candidate's date;
+      - the exported `state` stays the current outcome.
     - Both: executives is unknown, the feed is empty, and seq is 0.
     - Stage-3: everything as exported, including `meta.seq`.
   - Export writes the full stage-3 state (`format_version` 1). An export during a build shows
@@ -243,8 +248,8 @@ its proof, and the edges it must hold.
     build commit (W5).
   - The clock is persisted on change.
   - Startup marks no build as running (E3-6).
-  - The Dockerfile creates `/app/data`; RUN.md documents that state lives in the container
-    filesystem.
+  - The Dockerfile creates `/srv/data`, owned by `dossier`. RUN.md documents that state lives
+    in the container filesystem at that path.
 - **Rows:** T66-T74.
 - **Proof:** `stage-3/tests/restart_check.py` (RST), run against the built image:
   - reset, sign up, build two dossiers, refresh one so it has feed entries, set the clock,
@@ -270,15 +275,19 @@ rendered pages. The budget gains one lite query for executive pages, so 9 search
 and up to 15 renders in total if research cites fewer pages. Pages beyond the budget remain the
 documented budget limit DEV-S2.
 
-## For lead
+## Lead rulings (settled)
 
-1. **G3-1:** the stage-2 export has no build list. The plan imports one ready build at
-   `researched_at` with the total spend. Earlier `as_of` times give 404, and failed and
-   earlier builds are lost. Accept as a documented deviation?
-2. **G3-2:** the stage-2 export has no `Effective` lines and no URLs without candidates. Imported
-   `true_from` comes from `published_at` dates only. Accept as a documented deviation?
-3. The extra executives search query costs 1 unit per build (T75). Confirm under the
-   spend-minimal rule.
+1. **U1 / DEV-S3a:** a stage-2 import is one ready build at `researched_at`, holding all
+   candidates and the whole spend. A null `researched_at` gives 404 for every `as_of`. The
+   consequences of the lost history are in matrix DEV-S3a.
+2. **U2 / DEV-S3b:** imported `true_from` is the UTC date of `published_at`, else null.
+3. **U4:** imported `learned_at` = `retrieved_at`.
+4. **Executives query:** one extra lite search per build (1 unit, not the bare domain).
+   Research still asks only the six fields (T12, T75).
+5. **Restarts:** stdlib SQLite in WAL mode with `synchronous=FULL`, one transaction per change
+   committed before the response (including the build commit), data in `/srv/data` owned by
+   the runtime user, everything persisted, a running build dropped on restart, and no new
+   dependency (W11).
 
 ## Unverified
 

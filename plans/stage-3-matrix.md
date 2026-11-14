@@ -108,15 +108,15 @@ Codes:
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
 | T55 | "A stage-3 service must accept an export produced by the same team's stage-1 or stage-2 service." | The shape is detected per dossier: stage-1 fields have no `candidates`; stage-2 fields have candidates without `true_from`; a stage-3 state has `builds`, `history` and `feed`. | UT with fixtures exported from frozen `stage-1/` and `stage-2/` | W10 `migrate.py` |
-| T56 | "Every imported field that has a value gets one history entry of type `initial`, with `learned_at` the dossier's `researched_at` and `true_from` null unless the exported state records the dates that give it. The feed starts empty" | Stage-1: `true_from` is null. Stage-2: the selected candidate's `published_at` date in UTC (the export records no `Effective`; gap G3-2). | UT | W10 |
+| T56 | "Every imported field that has a value gets one history entry of type `initial`, with `learned_at` the dossier's `researched_at` and `true_from` null unless the exported state records the dates that give it. The feed starts empty" | Stage-1: `true_from` is null. Stage-2: the selected candidate's `published_at` date in UTC (the export records no `Effective`; DEV-S3b). | UT | W10 |
 | T57 | "the first build after import compares its selected values with the imported ones." | | UT | W10 |
 | T58 | "Existing tokens, dossiers and completed idempotent responses survive the import as in `stage-1.md` §10, and the history and feed of a stage-3 export survive a stage-3 import unchanged. So do its builds: after a stage-3 import, `?as_of=` and `/values` answer as they did in the exporting service." | The stage-3 export holds builds, versions, history, feed and the seq counter. | UT round trip (all endpoints equal before and after) | W10 |
 | T59 | "State imported from a stage-1 export counts as one build that completed `ready` at the dossier's `researched_at`, and each imported candidate's URL as one version gathered by it; imported candidates have `learned_at` equal to their `retrieved_at`." | Version `true_from` is null, so it holds from no date, and `/values` gives null fields for imported stage-1 state. This is the literal consequence (E3-4). | UT | W10 |
 | T60 | "An `as_of` at or after that time and before the next build returns the imported fields, and an earlier `as_of` is 404. An imported dossier whose `researched_at` is null answers every `as_of` with 404 until a build completes." | | UT | W10 |
-| T61 | "State imported from a stage-2 export keeps the builds that the stage-2 service made, each with its time, its outcome and its spending." | **Gap G3-1:** the stage-2 export (`stage-2/app/store.py:99-111`) records only the last ready build's candidates, `researched_at`, the last outcome and the total `spent_units`. It has no build list. It is reconstructed as one ready build at `researched_at` carrying all of `spent_units`. **Reported to lead.** | UT | W10 |
-| T62 | "Each of them that completed `ready` keeps the candidates it gathered and, for each URL it gathered, one page version whose `true_from` follows from that page's `Effective` and `Published` lines as that build gathered them" | **Gap G3-2:** no `Effective` value and no URLs without candidates are exported. A version's `true_from` is the UTC date of the URL's candidate `published_at`, else null. **Reported to lead.** | UT | W10 |
+| T61 | "State imported from a stage-2 export keeps the builds that the stage-2 service made, each with its time, its outcome and its spending." | **Lead ruling U1, documented deviation DEV-S3a:** the stage-2 export (`stage-2/app/store.py:99-111`; `plans/builder-notes-stage-3.md` §1-2) records only the last ready build's candidates, `researched_at`, the last outcome and the total `spent_units`. It has no build list. A stage-2 dossier imports as one ready build at `researched_at`, holding every exported candidate and the whole `spent_units`. A null `researched_at` gives 404 for every `as_of`. The exported `state` stays the dossier's current outcome. | UT | W10 |
+| T62 | "Each of them that completed `ready` keeps the candidates it gathered and, for each URL it gathered, one page version whose `true_from` follows from that page's `Effective` and `Published` lines as that build gathered them" | **Lead ruling U2, documented deviation DEV-S3b:** `Effective` was never exported, and neither were URLs read without a candidate. An imported stage-2 candidate's `true_from`, and its URL's version `true_from`, is the UTC date of its `published_at`, else null. A candidate stage 2 had itself imported (null `kind`) has a null `published_at`, so its `true_from` is null. | UT | W10 |
 | T63 | "State that the stage-2 service had itself imported counts as one build that completed `ready` at the dossier's `researched_at`." | The same reconstruction as T61, so these cases need no separate handling. | UT | W10 |
-| T64 | "`?as_of=`, `/values` and each candidate's `learned_at` then answer as if this service had made those builds. History is still one `initial` entry per field that has a value ... and an `as_of` response takes each field's `learned_at` and `true_from` from that history" | Candidate `learned_at` is its `retrieved_at`. The field snapshot of the reconstructed build takes its `learned_at` and `true_from` from the initial entry. | UT | W10 |
+| T64 | "`?as_of=`, `/values` and each candidate's `learned_at` then answer as if this service had made those builds. History is still one `initial` entry per field that has a value ... and an `as_of` response takes each field's `learned_at` and `true_from` from that history" | **Lead ruling U4:** a candidate's `learned_at` equals its `retrieved_at`. The field snapshot of the reconstructed build takes its `learned_at` and `true_from` from the initial entry. | UT | W10 |
 | T65 | "An export of a stage-1 or stage-2 service has no `executives` candidates. After its import, `executives` is `unknown`, in the imported state and in every build kept from the export, and has no history entry; the first build that completes `ready` with a value for it adds a `change`, or an `initial` entry when it is the dossier's first build that completes `ready`." | "First build that completes ready" counts builds made by this service. An imported dossier with `researched_at` set already has a ready build, so executives gets a `change`. A dossier imported with no ready build gets `initial`. | UT | W10, W3 |
 
 ## Concurrency and restarts
@@ -124,7 +124,7 @@ Codes:
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
 | T66 | "Concurrent refreshes and reads must produce the same results as executing them one at a time in some order. No change appears twice in the feed, and none is missing from it." | Single event loop. Every mutation is one synchronous section that writes memory and SQLite together, with no `await` inside (E3-5). | UT gather tests | W5, W11 |
-| T67 | "Disk - the container's filesystem; it survives a container restart" | The DB lives at `/app/data/dossier.db` inside the image filesystem; no volume is required. | RST | W11 |
+| T67 | "Disk - the container's filesystem; it survives a container restart" | The DB lives at `/srv/data/dossier.db`, a directory created in the image and owned by its runtime user `dossier` (lead ruling; builder notes R4). It is in the container filesystem, so no volume is needed. | RST | W11 |
 | T68 | "The container may be stopped abruptly at any time ... The sentence "State need not survive an abrupt container restart" ... no longer applies." | SQLite with `journal_mode=WAL` and `synchronous=FULL`. Every state change commits before its response is sent. | RST (kill -9 during load, restart, compare) | W11 `db.py` |
 | T69 | "Every account signs in with its password, and every bearer token is valid." | Users and token hashes are persisted at signup, login and reset. | RST | W11 |
 | T70 | "Every dossier answers `GET /dossiers/{domain}`, with and without `as_of`, `GET /dossiers/{domain}/values` and `GET /dossiers/{domain}/history` as before, and `GET /dossiers` lists the same dossiers." | | RST | W11 |
@@ -137,7 +137,7 @@ Codes:
 
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
-| T75 | "spend units only where they change a field" (lead) and "how research spending interacts with executives" (brief) | Research still asks only the six fields (T12). Executives come only from rendered pages. One more lite query, `<domain> chief financial officer chief operating officer chief technology officer CFO COO CTO`, costs 1 unit and surfaces executive pages. Budget: 9 searches + 25 research leaves 46; the 18-unit claim reserve then leaves 28 for search-page renders, about 15 renders per build in total (DEV-S2 unchanged). | UT budget; verifier `/calls` | W8 |
+| T75 | "spend units only where they change a field" (lead) and "how research spending interacts with executives" (brief) | Research still asks only the six fields (T12). Executives come only from rendered pages. One more lite query (confirmed by lead; not the bare domain), `<domain> chief financial officer chief operating officer chief technology officer CFO COO CTO`, costs 1 unit and surfaces executive pages. Budget: 9 searches + 25 research leaves 46; the 18-unit claim reserve then leaves 28 for search-page renders, about 15 renders per build in total (DEV-S2 unchanged). | UT budget; verifier `/calls` | W8 |
 | T76 | "stage-1/ and stage-2/ frozen" | | CMD `git diff f50cd1c -- stage-1 stage-2` is empty | W0 |
 | T77 | "stage-2 screens must keep working (the UI of stage 2 stays; executives is shown with other markup)" (brief) | | stage-2 E2E re-run in stage-3 | W9 |
 
@@ -153,16 +153,30 @@ Codes:
 
 ## Gaps, decisions, open items
 
-- **G3-1 (T61), reported to lead.** The stage-2 export has no build list, so it has no times,
-  outcomes or spend for earlier builds. The plan imports one ready build at `researched_at`,
-  carrying the total `spent_units`. Consequences:
-  - `as_of` before `researched_at` gives 404;
-  - `spent_units` in an `as_of` response is the full total;
-  - failed and earlier ready builds are lost.
-- **G3-2 (T62), reported to lead.** The stage-2 export has no `Effective` lines and no URLs
-  gathered without candidates. Version and initial `true_from` come from the candidate's
-  `published_at` date in UTC. Pages with an `Effective` line get a different `true_from` than
-  the original build had.
+- **DEV-S3a (T61, lead ruling U1).** The stage-2 export has no build list. Each stage-2 dossier
+  imports as one ready build at `researched_at`, holding all exported candidates and the whole
+  `spent_units`. Lost history:
+  - an `as_of` before `researched_at` gives 404 even if stage 2 had earlier ready builds;
+  - an `as_of` response's `spent_units` includes the spend of any later failed stage-2 build;
+  - earlier candidates' first-gathered times are lost (`learned_at` = `retrieved_at`, U4);
+  - URLs read without candidates are lost (no effect at import, since nothing earlier exists to
+    replace).
+- **DEV-S3b (T62, lead ruling U2).** `true_from` of imported stage-2 candidates, versions and
+  initial history is the UTC date of `published_at`, else null. It is wrong exactly when the
+  page had a valid `Effective` line.
+- **Restart ruling (lead).**
+  - Storage: stdlib SQLite, WAL mode, `synchronous=FULL`, and one transaction per state change
+    committed before the response, including inside the build commit.
+  - Data directory: `/srv/data`, owned by the runtime user.
+  - What persists:
+    - the clock;
+    - tokens and accounts;
+    - idempotency records;
+    - builds and page versions (including pages with no candidates);
+    - history, and the feed with its monotonic seq.
+  - A build running at the stop is dropped on restart, and the dossier keeps its last
+    completed state.
+  - No new dependency.
 - **E3-1** A failed build stores its time, outcome and spend but no versions or candidates. It
   is never an `as_of` snapshot.
 - **E3-2** Validation order on the new endpoints, applied in sequence:
