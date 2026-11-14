@@ -272,11 +272,10 @@ class Builds:
         task.add_done_callback(self._tasks.discard)
 
     async def _run(self, dossier, build: Build, build_time, generation: int) -> None:
-        fields = None
-        try:
-            fields = await build.run()
-        finally:
-            self._commit(dossier, build, fields, build_time, generation)
+        # A build cancelled because the service is stopping records nothing: like a build
+        # cut short by a crash, it is dropped (stage-3 "Restarts", lead ruling).
+        fields = await build.run()
+        self._commit(dossier, build, fields, build_time, generation)
 
     def _commit(self, dossier, build: Build, fields, build_time, generation: int) -> None:
         current = self.store.state.dossiers.get(dossier.domain)

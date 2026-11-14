@@ -385,3 +385,18 @@ def test_invalid_stage3_import_is_422_with_nothing_changed(client, web, tamper):
     r = client.post("/_test/import", json=bad)
     assert r.status_code == 422 and r.json()["error"]["code"] == "validation_failed"
     assert client.get("/_test/export").json() == export
+
+
+@pytest.mark.parametrize("fixture", [STAGE1, STAGE2], ids=["stage1", "stage2"])
+def test_upgraded_state_round_trips_through_a_stage3_export(client, fixture):
+    import_(client, fixture["export"])
+    h = {"Authorization": f"Bearer {fixture['token']}"}
+    paths = [p for d in fixture["export"]["state"]["dossiers"] for p in (
+        f"/dossiers/{d['domain']}", f"/dossiers/{d['domain']}/history",
+        f"/dossiers/{d['domain']}?as_of=2999-01-01T00:00:00Z",
+        f"/dossiers/{d['domain']}/values?true_at=2025-06-01")] + ["/dossiers", "/changes"]
+    before = {path: get(client, h, path) for path in paths}
+    export = client.get("/_test/export").json()
+    import_(client, export)
+    assert client.get("/_test/export").json() == export
+    assert {path: get(client, h, path) for path in paths} == before

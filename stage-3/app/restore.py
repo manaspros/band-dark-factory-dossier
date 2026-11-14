@@ -82,14 +82,13 @@ def valid_fields(fields, domain: str) -> bool:
 
 
 def _valid_pages(pages, fields: dict) -> bool:
-    """One page per URL; every candidate's page is listed with the candidate's true_from."""
+    """One page per URL, and every candidate's page is listed."""
     if not isinstance(pages, list) or not all(
             isinstance(p, dict) and set(p) == {"url", "true_from"} and is_str(p["url"])
             and is_date(p["true_from"], nullable=True) for p in pages):
         return False
-    dates = {p["url"]: p["true_from"] for p in pages}
-    return len(dates) == len(pages) and all(
-        c.url in dates and dates[c.url] == c.true_from for c in field_candidates(fields))
+    urls = {p["url"] for p in pages}
+    return len(urls) == len(pages) and all(c.url in urls for c in field_candidates(fields))
 
 
 def valid_build(build, number: int, domain: str) -> bool:
