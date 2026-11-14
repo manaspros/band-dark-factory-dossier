@@ -106,3 +106,36 @@ is also such a section. SQLite (stdlib, no new dependency) in WAL mode with
 
 - `cd stage-3 && /tmp/builder-venv/bin/python -m pytest -q -p no:cacheprovider tests` gave exit 0: "311 passed".
 - `cd stage-3 && docker build -q -t dossier-s3-copy:builder .` gave exit 0.
+
+## 5. Implementation notes and deviations from the plan (stage-3 implementation)
+
+Lead rulings DEV-S3a, DEV-S3b and U4 are implemented as ruled (app/migrate.py
+`upgrade_dossier`). The plan was otherwise followed; these points differ in detail:
+
+- **Schema.** Page versions are not a separate `versions` table. Each build row holds its
+  record as JSON: time, outcome, spending, the seven fields it decided, and `pages`
+  (url, true_from) for every page read, including pages with no candidates. A version's
+  candidates are those candidates of the build's fields whose URL is the page's.
+  - `seq` is not a counter in `meta`. The next seq is the last feed entry's seq + 1. Entries
+    are never removed, except by reset or import, so seq never repeats.
+  - There is no `imported_spent` column. It is `spent_units` minus the sum of the kept
+    builds' spending.
+- **Failed commits.** `Store.transaction` reloads memory from the database when a write fails,
+  so memory never runs ahead of disk.
+- **Export shape detection.** The shape is detected per dossier: a dossier with `builds` is in
+  stage-3 shape, any other is an earlier shape. A `feed` is optional and, when absent, the
+  feed starts empty. An earlier-shape dossier whose `researched_at` is null must have every
+  field unknown; otherwise import gives 422.
+- **New env var `DATA_DIR`.** Default `/srv/data`. It moves the database directory for runs
+  outside the image. The image does not need it.
+- **`as_of` in query strings.** `as_of` and `true_at` are read with `+` kept literal, so an
+  unencoded `+00:00` offset works as well as `%2B00:00`.
+- **Cancelled builds.** A build cancelled at shutdown records nothing, the same as after a
+  crash (T74).
+- **Stage-2 fixture.** `stage-3/tests/fixtures/stage2-export.json` was produced by running the
+  frozen `stage-2/` service in-process against its own fake web. Python ran with `-B`; nothing
+  in stage-2/ was changed.
+- **Docker restart check and the feed.** The harness mock web serves the same pages to every
+  build, so `tests/restart_check.py` against the container sees no feed entries. Feed
+  persistence and the larger seq after a restart are covered by the unit test
+  `test_state_survives_a_restart` (same SQLite file, new app).
