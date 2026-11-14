@@ -227,3 +227,96 @@ def test_researched_at_must_be_a_timestamp(client):
         bad = json.loads(json.dumps(EXPORT))
         bad["state"]["dossiers"][0]["researched_at"] = sample
         _assert_rejected(client, bad, before)
+
+
+# ---------------------------------------------------------------- excerpts must support values
+
+def _self_consistent(field, candidates):
+    """The field the selection rule makes of ``candidates`` (so only support can fail)."""
+    from app.selection import Candidate, decide_field
+    return decide_field([Candidate.from_json(field, c) for c in candidates])
+
+
+def _built_export():
+    """A real stage-2 export: one build with agreeing and disagreeing pages."""
+    from tests.fakes import DOMAIN, PAGES
+    pages = dict(PAGES)
+    pages["https://bizdata.test/acme"] = "Kind: aggregator\n\nAcme Robotics CEO: Sam Ortiz."
+    web = FakeWeb(pages=pages)
+    with TestClient(create_app(web_factory=lambda: web)) as c:
+        c.post("/_test/reset", json={"now": "2026-03-01T09:00:00+00:00", "users": [
+            {"id": "u_a", "email": "a@example.com", "password": "correct horse",
+             "display_name": "A"}]})
+        token = c.post("/auth/login", json={"email": "a@example.com",
+                                            "password": "correct horse"}).json()["token"]
+        h = {"Authorization": f"Bearer {token}"}
+        c.post("/dossiers", json={"domain": DOMAIN}, headers={**h, "Idempotency-Key": "k"})
+        for _ in range(200):
+            if c.get(f"/dossiers/{DOMAIN}", headers=h).json()["state"] != "building":
+                break
+            time.sleep(0.02)
+        return c.get("/_test/export").json()
+
+
+def test_stage2_build_export_round_trips_unchanged(client):
+    exported = _built_export()
+    fields = exported["state"]["dossiers"][0]["fields"]
+    assert fields["ceo"]["status"] == "contested"
+    assert client.post("/_test/import", json=exported).status_code == 204
+    assert client.get("/_test/export").json() == exported
+
+
+def test_stage1_fixture_imports_cleanly(client):
+    assert client.post("/_test/import", json=EXPORT).status_code == 204
+
+
+def _tamper_stage2(exported, change):
+    payload = json.loads(json.dumps(exported))
+    dossier = payload["state"]["dossiers"][0]
+    change(dossier)
+    return payload
+
+
+@pytest.mark.parametrize("case", ["changed_value", "wrong_field", "wrong_domain",
+                                  "multi_sentence"])
+def test_stage2_tampered_candidates_are_422(client, case):
+    exported = _built_export()
+    client.post("/_test/import", json=exported)
+
+    def change(dossier):
+        fields = dossier["fields"]
+        if case == "changed_value":     # 2014 is cited by "... founded in 2014."
+            cands = fields["founded_year"]["candidates"]
+            cands[0]["value"] = 2015
+            fields["founded_year"] = _self_consistent("founded_year", cands)
+        elif case == "wrong_field":     # a CEO sentence offered as the headquarters
+            moved = dict(fields["ceo"]["candidates"][0])
+            fields["hq_city"] = _self_consistent("hq_city", [moved])
+        elif case == "wrong_domain":    # the excerpts name acme-robotics, not this domain
+            dossier["domain"] = "other-company.test"
+        else:                           # two sentences
+            cands = fields["founded_year"]["candidates"]
+            cands[0]["excerpt"] += " It grew."
+            fields["founded_year"] = _self_consistent("founded_year", cands)
+
+    _assert_rejected(client, _tamper_stage2(exported, change), exported)
+
+
+@pytest.mark.parametrize("case", ["changed_value", "wrong_field", "wrong_domain",
+                                  "multi_sentence"])
+def test_stage1_tampered_citations_are_422(client, case):
+    before = client.get("/_test/export").json()
+    payload = json.loads(json.dumps(EXPORT))
+    dossier = next(d for d in payload["state"]["dossiers"]
+                   if d["fields"]["founded_year"]["value"] is not None)
+    fields = dossier["fields"]
+    if case == "changed_value":
+        fields["founded_year"]["value"] += 1
+    elif case == "wrong_field":
+        fields["hq_city"]["citations"] = fields["ceo"]["citations"]
+        fields["hq_city"]["value"] = fields["ceo"]["value"]
+    elif case == "wrong_domain":
+        dossier["domain"] = "other-company.test"
+    else:
+        fields["founded_year"]["citations"][0]["excerpt"] += " It grew."
+    _assert_rejected(client, payload, before)

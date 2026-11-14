@@ -159,7 +159,8 @@ def import_state(payload) -> State:
                  and is_rfc3339(d.get("researched_at"), nullable=True)
                  and _is_int(d.get("spent_units")) and d["spent_units"] >= 0
                  and isinstance(d.get("fields"), dict) and set(d["fields"]) == set(FIELDS)
-                 and all(valid_field(n, v) for n, v in d["fields"].items()), "dossier")
+                 and all(valid_field(n, v, d["domain"]) for n, v in d["fields"].items()),
+                 "dossier")
         _require(d["dossier_id"] not in dossier_ids and d["domain"] not in state.dossiers
                  and d["dossier_id"] not in state.users, "duplicate dossier")
         dossier_ids.add(d["dossier_id"])

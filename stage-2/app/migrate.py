@@ -18,7 +18,7 @@ from app.clock import parse_rfc3339
 from app.errors import ApiError
 from app.pages import KINDS
 from app.selection import PROVIDER_ORDER, Candidate, decide_field
-from app.support import HEADCOUNT_RANGES, MAX_EXCERPT_CHARS
+from app.support import HEADCOUNT_RANGES, MAX_EXCERPT_CHARS, supports
 
 STAGE1_KEYS = {"value", "status", "citations"}
 STAGE2_KEYS = STAGE1_KEYS | {"candidates"}
@@ -72,16 +72,25 @@ def _valid_citation(c) -> bool:
     return isinstance(c, dict) and set(c) == {"url", "excerpt", "provider"} and _valid_source(c)
 
 
-def _valid_candidate(field: str, c) -> bool:
+def _supports(excerpt: str, field: str, value, domain: str) -> bool:
+    """Whether ``excerpt`` alone states ``value`` for ``field`` of the company at ``domain``
+    (Appendix A: a single sentence naming the company, with a statement phrase, no
+    negation, and every value in the field's format normalising to ``value``)."""
+    return supports(excerpt, field, domain) == value
+
+
+def _valid_candidate(field: str, c, domain: str) -> bool:
     return (isinstance(c, dict) and set(c) == CANDIDATE_KEYS and in_field_format(field, c["value"])
             and _valid_source(c) and (c["kind"] is None or (_is_str(c["kind"]) and c["kind"] in KINDS))
             and is_rfc3339(c["published_at"], nullable=True)
             and is_rfc3339(c["retrieved_at"], nullable=False)
-            and isinstance(c["selected"], bool))
+            and isinstance(c["selected"], bool)
+            and _supports(c["excerpt"], field, c["value"], domain))
 
 
-def valid_field(field: str, value) -> bool:
-    """Whether ``value`` is a field in the stage-1 or the stage-2 export shape."""
+def valid_field(field: str, value, domain: str) -> bool:
+    """Whether ``value`` is a field of the dossier for ``domain``, in the stage-1 or the
+    stage-2 export shape, with every excerpt supporting the value it is cited for (§1, §4)."""
     if not isinstance(value, dict) or set(value) not in (STAGE1_KEYS, STAGE2_KEYS):
         return False
     citations = value["citations"]
@@ -90,14 +99,16 @@ def valid_field(field: str, value) -> bool:
     if "candidates" in value:
         candidates = value["candidates"]
         if not isinstance(candidates, list) or not all(
-                _valid_candidate(field, c) for c in candidates):
+                _valid_candidate(field, c, domain) for c in candidates):
             return False
-        # The field must be exactly what the selection rule makes of its candidates.
+        # The field (value, status, citations, order, selected) must be exactly what the
+        # selection rule and the Status rule make of its candidates.
         return decide_field([Candidate.from_json(field, c) for c in candidates]) == value
     if value["value"] is None:
         return value["status"] == "unknown" and citations == []
     return (in_field_format(field, value["value"]) and value["status"] == "known"
-            and len(citations) >= 1)
+            and len(citations) >= 1
+            and all(_supports(c["excerpt"], field, value["value"], domain) for c in citations))
 
 
 def import_field(field: str, value: dict, researched_at: str | None) -> dict:
