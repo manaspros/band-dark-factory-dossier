@@ -232,9 +232,14 @@ because later items import earlier ones.
   - **Schedule and time bound (F97, lead ruling 6).** These are the numbers for a build whose
     calls each answer in ≤ 1 s, measured on effective build time (429 waits excluded):
 
-    | Time | Step |
+    The table is the **nominal** timeline: no retries, 1 s answers. With retries, one call
+    takes up to 1 + 1.05 + 1 + 1.05 + 1 = 5.1 s, and every dependent step shifts later by up
+    to 4.1 s. The table is therefore not the bound. The bound is the guard invariant after
+    the table.
+
+    | Time (nominal) | Step |
     |---|---|
-    | 0-1 s | The 10 lite searches and the research start, all concurrent. Retries of refused calls: at most 2 at 1.05 s, so ≤ 3.1 s. |
+    | 0-1 s | The 10 lite searches and the research start, all concurrent (with retries, up to 5.1 s). |
     | 1-3 s | Research polls, 1 s apart. Give up after 3 consecutive failed polls (F72). |
     | 3-4 s | All claim pages rendered concurrently. |
     | 4-7 s | Originals of the claim pages, ≤ 3 sequential hops (≤ 3 s), concurrent across pages. Search-page renders start at 4 s, concurrently. |
@@ -242,6 +247,17 @@ because later items import earlier ones.
     | 8.0 s | **Guard:** no new call (render, original, retry, poll) starts after 8.0 s, the inherited `FAST_RETRY_CUTOFF_SECONDS` (`build.py:57`). Research still unfinished is abandoned; a hop not started takes host(URL) (DEV-S4b). |
     | ≤ 9 s | The last call answers. Decide and commit synchronously. |
     | < 10 s | The build has ended. |
+
+    **Guard invariant (the bound):** every attempt starts at ≤ 8.0 s of effective time.
+    - Retries check `effective_elapsed + RETRY_SECONDS ≤ 8.0` before waiting
+      (`build.py:181-184`, kept).
+    - Each research poll, render and original fetch checks `effective_elapsed ≤ 8.0`
+      immediately before its reservation, and otherwise returns not-served or no-claims.
+
+    With answers ≤ 1 s, every attempt ends ≤ 9.0 s. After 8.0 s no new attempt starts, and
+    every awaiting task (a retry wait, poll loop, hop or render queue) re-checks the guard and
+    returns. So nothing is outstanding after 9.0 s. Deciding and committing is synchronous
+    (milliseconds), so the build ends < 10 s for any retry pattern.
 
     The guard applies only while `self.fast` holds (every answer ≤ 1 s). With slower live
     providers, the stage-1 §8 30 s/120 s/300 s rules and `BUILD_DEADLINE_SECONDS = 270`
@@ -269,6 +285,14 @@ because later items import earlier ones.
     every render → ends < 10 s, `ready`;
   - `::slow_research_fast_calls`: polls answer fast but the run never finishes → `ready`
     < 10 s;
+  - `::mixed_retry_chain`. Setup: every call answers in 0.95 s, and each attempt's start time
+    is recorded; every search and the research start are refused 503, 503, then OK; polls
+    503, then running, then done; claim pages have candidates and 3-hop Canonical chains
+    whose first original is refused once. Assertions:
+    - the build ends < 10 s, `ready`;
+    - no attempt starts after 8.0 s effective;
+    - a guard-cut hop gives host(URL);
+    - spend counts only the charged attempts;
   - `test_spend.py`: no repeated query or URL (including a URL that is both a claim page and
     a search result, and one that is both an original and a search result); no extract for an
     invalid-host or `mailto:` URL;
@@ -521,6 +545,7 @@ Every row maps to a work item:
 | D4-5 `/values` keys | Lead ruling 2: add `origins` and `corroborated` from the candidates at `true_at`; no `corroborated_since` |
 | Served URL of originals | `fetch` returns `Served(url, lineage)`; the served URL drives F8/F11/F13 for originals (D4-16), with a redirect UT |
 | D4-9 | Lead ruling 3: kept |
+| Cycle 2: retry arithmetic | The table is relabelled nominal; with retries one call takes up to 5.1 s. The bound now rests on the guard invariant (every attempt starts ≤ 8.0 s, so it ends ≤ 9.0 s). New test `mixed_retry_chain` |
 
 ## Unverified
 
