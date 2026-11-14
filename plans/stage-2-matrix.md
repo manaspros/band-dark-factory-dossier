@@ -197,8 +197,8 @@ Column key as in stage 1.
 | S108 | "A stage-2 service must accept an export produced by the same team's stage-1 service." | `import_state` accepts the stage-1 state shape: fields of exactly `{value,status,citations}` (`stage-1/app/store.py:131-143`) and no candidates. | NOT EXERCISED -> UT using a real stage-1 export fixture generated from `stage-1/` (E17) | V6 `migrate.py` |
 | S109 | "A browser signed in before that export/import upgrade must remain signed in afterwards." | Token hashes carry over (`stage-1/app/store.py:104`). The UI keeps its token in `localStorage`. | E2E | V6, V8 |
 | S110 | "Imported dossiers appear in the list and on their screens." | | E2E | V6 |
-| S111 | "Each imported field gains one candidate for every value that text the providers served to the dossier's last stage-1 build that completed `ready` supports for that field, once for each page whose served text supports it." | **Gap G1:** the stage-1 export records only each field's selected value and its citations (`stage-1/app/store.py:98-111`), not page texts. The migration can only rebuild candidates from the exported citations: one candidate per (field, value, citation URL), taking the first excerpt for that URL and re-checking support. Values that stage-1 evidence supported but did not select are not recoverable. **Reported to lead**; stage-1 is frozen. | UT with a stage-1 export fixture | V6 |
-| S112 | "The candidate's excerpt is taken from that text and supports the value; its `provider` is the provider that served that text, its `kind` and `published_at` are as the exported state records them or else null, and its `retrieved_at` is the dossier's `researched_at`." | The stage-1 export records no kind or published time, so both are null. Provider comes from the citation. | UT | V6 |
+| S111 | "Each imported field gains one candidate for every value that text the providers served to the dossier's last stage-1 build that completed `ready` supports for that field, once for each page whose served text supports it." | **Lead ruling (accepted limitation DEV-S1):** the stage-1 export records only each field's selected value and its citations, with no page texts, kind or publication time (`stage-1/app/store.py:98-111`; `plans/builder-notes-stage-2.md`, commit 980c440). Import rebuilds candidates from the exported citations only: one candidate per (field, value, url), taking the excerpt and provider as exported (the first exported excerpt for that URL). Values stage-1 supported but did not select cannot be recovered, so such fields import as `known` with one value. | UT `test_migrate.py` with a stage-1 export fixture (one candidate per distinct citation URL; a dossier that was contested in stage-1 imports as `known`, documented) | V6 |
+| S112 | "The candidate's excerpt is taken from that text and supports the value; its `provider` is the provider that served that text, its `kind` and `published_at` are as the exported state records them or else null, and its `retrieved_at` is the dossier's `researched_at`." | Per the lead ruling: `kind` and `published_at` null (null kind has `aggregator` authority, so selection falls through to URL, then provider, then value); `excerpt` and `provider` as exported; `retrieved_at` = `researched_at`. | UT | V6 |
 | S113 | "Each imported field's `value`, `status` and `citations` then follow from its candidates by the selection rule and Status, as after a build." | | UT | V6 |
 | S114 | "A research or refresh request whose response was lost before export remains retryable after import with the same body and key; the UI must recover the original response and show the imported dossier." | Idempotency records carry over. A replay gives 200 with the original body. The UI's in-memory pending request survives because no reload happens. | E2E: lose response, export from stage-1, import into stage-2, retry | V6, V11 |
 | S115 | "These requirements apply when import completes between browser requests; migration during an in-flight request is not required. No page reload or new screen is required." | | n/a | V6 |
@@ -232,10 +232,22 @@ Column key as in stage 1.
 
 ## Conflicts, gaps and decisions
 
-- **G1 (S111), reported to lead.** The stage-1 export lacks page texts, so after import only the
-  values stage-1 selected (and their cited pages) become candidates. An imported field that
-  stage-1 evidence contested will show `known` until the next build. Stage-1 is frozen.
-  Lead decides whether this is accepted as a documented deviation.
+- **G1 / DEV-S1 (S111), resolved by lead ruling (accepted limitation).** The stage-1 export lacks
+  page texts, kind, publication time and losing values. Import rebuilds candidates from the
+  exported citations only: one per (field, value, url), with excerpt and provider as exported,
+  `kind` and `published_at` null, and `retrieved_at` = `researched_at`. A field that had other
+  values in stage 1 imports as `known` with one value until its next build.
+- **E18 (lead ruling, carry-forward compatibility).** Stage 2 keeps these unchanged:
+  - token storage as sha256 of the bearer token (the UI sends the same bearer token from
+    `localStorage`);
+  - the idempotency record key (user_id, method, raw path, key);
+  - fingerprints: canonical JSON of `{"domain": ...}` for `POST /dossiers`, and `{}` for
+    refresh;
+  - `format_version: 1` for exports.
+
+  The import validator is widened to accept both field shapes: the stage-1 shape (exactly
+  `value`, `status` known/unknown, `citations`) and the stage-2 shape (with `candidates`, and
+  status known/contested/unknown). Rows S108, S109, S114.
 - **C-S1 (S22), flagged for lead.** The spec allows up to three 429s in a row for the same call.
   Lead ruling L1's cap of 2 retries would drop a call that is refused three times. The plan gives
   429 refusals 3 retries (1.05 s apart, excluded from the 10 s clock by S23). It keeps the cap

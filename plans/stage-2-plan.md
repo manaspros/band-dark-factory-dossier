@@ -167,23 +167,42 @@ V0 -> V12.
 - **Files:** `stage-2/app/store.py` (model and view), `stage-2/app/dossiers.py`.
 
 ### V6 Export/import and stage-1 migration
-- **Changes:** the export state carries candidates (`format_version` stays 1, track
-  `dossier`). `import_state` detects the shape: if any field lacks `candidates`, the stage-1
-  shape is validated with the stage-1 rules and then migrated by `migrate.py`. A candidate is
-  built per (field, value, citation URL): the excerpt is re-checked with `supports`; `provider`
-  comes from the citation; `kind` and `published_at` are null; `retrieved_at` is
-  `researched_at`. The field is then decided by V3. Users, token hashes, idempotency records,
-  ids, `spent_units` and `researched_at` are kept unchanged.
-- **Rows:** S108-S116, and G1 (reported).
+- **Changes:**
+  - Export: the export state carries candidates. `format_version` stays 1 and the track stays
+    `dossier` (E18).
+  - Import, validation: `import_state` validates each dossier's fields against **either**
+    shape (E18).
+    - The stage-1 shape is a field with exactly `value`, `status` (`known` or `unknown`) and
+      `citations`. It widens stage-1's strict `_valid_field` (`stage-1/app/store.py:131-143`).
+    - The stage-2 shape adds `candidates`, and `status` may also be `contested`.
+    - Validation is all-or-nothing before the swap.
+  - Import, migration (lead ruling, DEV-S1): a stage-1-shaped field is migrated by
+    `migrate.py`.
+    - One candidate per (field, value, url) from the exported citations: the first exported
+      excerpt for that URL, and its exported provider.
+    - `kind` and `published_at` are null, and `retrieved_at` is the dossier's
+      `researched_at`.
+    - The field is then decided by V3. A dossier exported as `failed` with unknown fields gets
+      empty candidates.
+  - Kept unchanged:
+    - users and their scrypt hashes;
+    - token storage as sha256 of the bearer token;
+    - idempotency records keyed (user_id, method, raw path, key), with fingerprints
+      `{"domain": ...}` for POST and `{}` for refresh;
+    - ids, `spent_units` and `researched_at`.
+- **Rows:** S108-S116, DEV-S1, E18.
 - **Proof:** UT `test_migrate.py` with a committed stage-1 export fixture
   (`stage-2/tests/fixtures/stage1-export.json`, produced by running the frozen `stage-1`
   service against the harness mock and exporting). It checks:
-  - every field's candidates are derived from the exported citations;
-  - statuses are recomputed;
-  - an old token still authenticates;
-  - a replayed stage-1 POST /dossiers key returns 200 with its original body;
-  - a `failed` dossier with no ready build has empty candidates;
-  - an invalid stage-1 state gives 422 and leaves the destination unchanged.
+  - every field's candidates equal one per distinct (value, citation URL), with the excerpt
+    and provider as exported, null `kind` and `published_at`, and `retrieved_at` equal to
+    `researched_at`;
+  - statuses are recomputed (known or unknown; a stage-1-contested field is `known`, DEV-S1);
+  - an old bearer token still authenticates;
+  - a replayed stage-1 POST /dossiers key and refresh key return 200 with the original bodies;
+  - a mixed import (one stage-1-shaped dossier, one stage-2-shaped dossier) is accepted;
+  - an invalid stage-1 state gives 422 and leaves the destination unchanged;
+  - a stage-2 export round trip is identical.
 
   E2E: sign in on stage-1, lose a research response, export, import into stage-2, retry in the
   same page, and the dossier shows.
@@ -286,9 +305,7 @@ are carried by V0.
 
 ## For lead (decisions requested)
 
-1. **G1:** the stage-1 export holds no page texts. The migration can only rebuild candidates
-   from exported citations, so an imported field contested in stage-1 evidence shows `known`
-   until refreshed. Accept as a documented deviation?
+1. **G1:** resolved by lead ruling as accepted limitation DEV-S1 (see V6 and matrix E18).
 2. **C-S1:** give 429 refusals 3 retries (spec allows three 429s in a row; the wait is
    excluded from the 10 s clock). Other refusals keep the cap of 2.
 3. **C-S2:** research in every build (25 units), because research-cited pages are evidence and
