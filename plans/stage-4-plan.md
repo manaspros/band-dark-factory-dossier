@@ -76,9 +76,15 @@ because later items import earlier ones.
     domain becomes `aggregator` (F9-F10).
   - `is_lookalike(lineage, url)` (F11).
   - `origins.py`: `async def resolve(page_url, lineage, domain, fetch) -> str`. `fetch(url)`
-    is a callback returning `Lineage | None`, where None means not served (F17, D4-4). The
-    rules apply in order, 1 → 2 → 3 → 4, and rule 2 recurses with `hops_left` starting at 3.
-    When the hops run out, or `fetch` returns None, the result is `host(url)`.
+    is a callback returning `Served(url, lineage) | None`. `Served.url` is the URL the
+    provider served the original at (`Page.url`, `web.py:115`), which may differ from the
+    requested Canonical URL after a redirect. None means not served (F17, D4-4, D4-15).
+  - The rules apply in order, 1 → 2 → 3 → 4, and rule 2 recurses with `hops_left` starting
+    at 3. The recursion uses `Served.url` as the original's own URL. That URL drives the
+    self-canonical test (F13), the registrant default (F8) and the lookalike host (F11), so
+    `lineage(...)` for an original is parsed with `Served.url`, never with the requested URL
+    (D4-16).
+  - When the hops run out, or `fetch` returns None, the result is `host(requested url)`.
   - The module has no provider imports, so it is testable with a dict-backed fetch.
 - **Rows:** F4-F15, F17, F18.
 - **Proof:** the UT cases named in the matrix rows. The edges:
@@ -89,6 +95,9 @@ because later items import earlier ones.
   - a 4th hop → host;
   - an A↔B cycle → terminates via the cap;
   - an original that is itself a lookalike → company domain;
+  - a redirected original: Canonical U served at U′ (`Served.url = U′`) whose own Canonical is
+    U′ → self-canonical, so the rules use registrant host(U′); with a Kind own header and no
+    Registrant, the lookalike test uses host(U′);
   - an unserved original → host of its URL.
 
 ### U2 Investor names (Appendix A)
@@ -204,38 +213,74 @@ because later items import earlier ones.
       backed by led by"` (1 unit).
     - **Search memo:** an identical query string is never sent twice per build (the
       company-name query can equal another, so dedupe the list).
-    - **Extract memo:** `self._extracts: dict[url, Lineage|None]`. A URL is rendered at most
-      once per build. A rendered evidence page records its lineage.
-    - **Origins phase:** after each render wave, for each page with ≥ 1 candidate, call
-      `origins.resolve` with a `fetch` that uses the memo, else `self.call(RENDER_UNITS,
-      extract_rendered)` and parses the lineage of the first returned document. None is
-      returned for no document, a refusal or lost call after retries, or an unaffordable
-      fetch (D4-3, D4-4).
+    - **Extract memo:** `self._extracts: dict[url, Served|None]`, keyed by both the requested
+      URL and the served URL. A URL is rendered at most once per build. A rendered evidence
+      page records its `Served`.
+    - **No useless render (lead ruling 4):** a URL is skipped, and nothing is spent on it, when
+      it is already in the memo, appears twice in the results, is not `http(s)`, or has no
+      valid host (`pages._host_domain` is None).
+    - **Origins, pipelined:** as soon as a rendered page yields ≥ 1 candidate, a task resolves
+      its origin with `origins.resolve`. Its `fetch` uses the memo, else
+      `self.call(RENDER_UNITS, extract_rendered)`, and returns `Served(first document's url,
+      lineage)`. None is returned for no document, a refusal or lost call after retries, an
+      unaffordable fetch, or the 8 s guard (D4-3, D4-4, D4-15). Search-page renders do not
+      wait for these tasks; the build awaits all of them before deciding.
     - **Candidate origin:** stamp `origin` on that page's candidates.
-    - **Priority:** originals are resolved before the next wave of search-page renders, and
-      the render allowance is recomputed after them.
+    - **Budget order:** an original fetch reserves from the same budget as renders. Renders
+      of search pages take the allowance computed after the claim pages, minus 3 units per
+      pending original hop known at that moment, so originals of claim pages are not starved.
+  - **Schedule and time bound (F97, lead ruling 6).** These are the numbers for a build whose
+    calls each answer in ≤ 1 s, measured on effective build time (429 waits excluded):
+
+    | Time | Step |
+    |---|---|
+    | 0-1 s | The 10 lite searches and the research start, all concurrent. Retries of refused calls: at most 2 at 1.05 s, so ≤ 3.1 s. |
+    | 1-3 s | Research polls, 1 s apart. Give up after 3 consecutive failed polls (F72). |
+    | 3-4 s | All claim pages rendered concurrently. |
+    | 4-7 s | Originals of the claim pages, ≤ 3 sequential hops (≤ 3 s), concurrent across pages. Search-page renders start at 4 s, concurrently. |
+    | 5-8 s | Originals of the search pages, ≤ 3 hops. |
+    | 8.0 s | **Guard:** no new call (render, original, retry, poll) starts after 8.0 s, the inherited `FAST_RETRY_CUTOFF_SECONDS` (`build.py:57`). Research still unfinished is abandoned; a hop not started takes host(URL) (DEV-S4b). |
+    | ≤ 9 s | The last call answers. Decide and commit synchronously. |
+    | < 10 s | The build has ended. |
+
+    The guard applies only while `self.fast` holds (every answer ≤ 1 s). With slower live
+    providers, the stage-1 §8 30 s/120 s/300 s rules and `BUILD_DEADLINE_SECONDS = 270`
+    (`build.py:58`) apply unchanged.
   - **Research failure (F72):** `research_urls()` counts consecutive failed polls (a refused
     or lost poll, not a 429). After 3 it gives up and returns `[]`. A 429 poll waits off the
     clock as today.
   - **Research affordability:** start research only when `budget.remaining ≥ RESEARCH_UNITS +
     RENDER_UNITS` after the searches have reserved. Otherwise skip it, which matters only
     under a small batch share (see Spend).
-  - **Outcome (D4-10):** `run()` returns `failed` when `attempted_calls > 0 and not
-    succeeded`, `ready` otherwise. A batch build with zero calls is ready with all fields
-    unknown.
+  - **Outcome (D4-10, lead ruling 1):** `build_outcome(succeeded, stopped_by_batch_budget)`
+    returns `ready` when some call succeeded or the batch budget stopped the build, and
+    `failed` otherwise. The Batches text overrides §8 for budget exhaustion only: a batch
+    build with zero calls is `ready` with all fields unknown, while a build whose calls all
+    failed is `failed`.
   - **Durable spend (U7 hook):** `Build` takes an optional `on_spend(reserved_total)`
     callback, which the budget invokes after every reserve and settle.
   - **Builds.start(dossier, build_time, batch=None):** creates the nested budget with
     `cap=min(80, batch.share)` (see Spend) and `parent=batch.budget`, and inserts the
     `running` row in the caller's open transaction.
-- **Rows:** F3, F16, F17, F42, F66-F68, F70-F74, F86, F95.
+- **Rows:** F3, F16, F17, F42, F66-F68, F70-F74, F86, F95, F97.
 - **Proof:** fake `WebClient` tests:
+  - `test_timing.py::worst_case_fast`: every call answers in 0.95 s, research finishes after
+    3 polls, every page has candidates and a 3-hop Canonical chain, and the budget allows
+    every render → ends < 10 s, `ready`;
+  - `::slow_research_fast_calls`: polls answer fast but the run never finishes → `ready`
+    < 10 s;
+  - `test_spend.py`: no repeated query or URL (including a URL that is both a claim page and
+    a search result, and one that is both an original and a search result); no extract for an
+    invalid-host or `mailto:` URL;
   - call counts, with one extract per URL and none for an original without candidates;
   - exactly 10 distinct searches;
   - all-503 → failed in < 10 s and spent 0;
   - all research fails three ways → ready within 10 s, with search-page fields;
   - search refused and extract answered → still ready if any call succeeded;
   - batch budget 30 with 3 builds → total ≤ 30 and exhausted stops further calls;
+  - budget 1 with 2 domains → the second build makes 0 calls and ends `ready`, all fields
+    unknown;
+  - a batch build whose calls all 503 → `failed`;
   - a lost call is charged.
 - **Edges:**
   - a 4th hop;
@@ -327,7 +372,10 @@ because later items import earlier ones.
   - `snapshot()` is unchanged; snapshots already carry the new keys (stored at commit/import).
   - `values()` output loops over `ALL_FIELDS` (8). `decide()` includes investors membership
     from the candidates at `true_at` (F50).
-  - Per D4-5, the `/values` fields keep 3 keys.
+  - Per D4-5 (lead ruling 2), each `/values` field is `{value, true_from, citations, origins,
+    corroborated}`. `origins` and `corroborated` come from `corroboration.current_keys` over
+    the candidates at `true_at`, with the same member rules. There is no
+    `corroborated_since`.
 - **Rows:** F50, F82, F94.
 - **Proof:** UT investors at `true_at` (a member by two origins only at the later date).
 
@@ -413,7 +461,10 @@ Per build, every call and why it can change a field:
 | Rendered extract, search pages | 3 each | In priority order (snippet states a value, own host, URL) until the cap |
 
 What the build never does:
-- the same search or extract twice in one build (memo);
+- the same search or extract twice in one build (memo by query, requested URL and served
+  URL);
+- a render of a URL that cannot yield a candidate or an original: a duplicate, a non-`http(s)`
+  URL, or one with no valid host (lead ruling 4);
 - a Tavily, Kernel or Browserbase call;
 - a retry of a lost (charged) call;
 - an extract of an original for a candidate-less page.
@@ -423,12 +474,12 @@ This stops the first builds from starving the later ones of renders. The batch b
 still enforced as a hard shared reservation (F66), and units a build leaves unspent are not
 redistributed. That keeps the strategy simple and can only lower spend.
 
-**No "settled" early stop.** Every additional page can change a field's candidates,
-`origins`, `corroborated`, `status` (contested) or investors membership, all of which are part
-of the field. So a field is not settled while unread evidence remains. The only stops are the
-caps and an empty queue. This is stated to lead as a judgment call. If lead rules otherwise,
-the narrowest safe stop is: skip search pages whose snippet names neither the company nor its
-domain once every field has a value. That would be a new deviation.
+**No "settled" early stop (lead ruling 4, D4-13).** Every additional page can change a
+field's candidates, `origins`, `corroborated`, `status` (contested) or investors membership,
+all of which are part of the field. So the only stops are:
+- the caps (80 per build, the batch budget);
+- the 8 s fast-regime guard (F97);
+- an empty queue.
 
 ## Rows → work items
 
@@ -457,13 +508,28 @@ Every row maps to a work item:
 | F86 | U5 |
 | F87-F88 | U11 |
 | F89-F96 | listed items |
+| F97 | U5 |
+
+## Cycle-1 audit resolution (plan-checker findings on 0ade905)
+
+| Finding | Resolution |
+|---|---|
+| F86 settled stop | Lead ruling 4: no early stop; spend minimised by memo, the no-useless-render rule and candidate-only originals (D4-13) |
+| D4-10 zero-call batch build | Lead ruling 1: `ready`; the Batches text overrides §8 for budget exhaustion only (`build_outcome`) |
+| F79 reservation window | Lead ruling 5: a reserved, unanswered call counts as in flight. No reservation is held across any wait (D4-14) |
+| §8 10 s bound | U5 schedule table with numbers and the 8.0 s guard; new row F97 with timing tests |
+| D4-5 `/values` keys | Lead ruling 2: add `origins` and `corroborated` from the candidates at `true_at`; no `corroborated_since` |
+| Served URL of originals | `fetch` returns `Served(url, lineage)`; the served URL drives F8/F11/F13 for originals (D4-16), with a redirect UT |
+| D4-9 | Lead ruling 3: kept |
 
 ## Unverified
 
 - I did not read any stage-4 supplied check or `acceptance/stage-4/`.
 - I did not run the code. The line citations were read at 679a833.
-- **D4-5** (`/values` keeps 3 keys), **D4-9** (400 for a wrong-typed `domains`) and **D4-10**
-  (a zero-call batch build is ready) are interpretations; a check could expect otherwise.
+- D4-5, D4-9 and D4-10 now follow lead rulings 2, 3 and 1. A supplied check could still
+  expect otherwise.
+- The schedule numbers in U5 assume the fake research run finishes within about 3 polls. A
+  slower run in the fast regime is cut at 8 s by the guard, and is not otherwise bounded.
 - The fsync cost of the durable reservations (U7) under 50 concurrent builds has not been
   measured. `load_check.py` settles it.
 - I have not confirmed that a fake Nimble stub can be reached from the restart test
