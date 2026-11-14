@@ -205,6 +205,11 @@ and "the user decides" at the end of the work.
   hint or approval entered the room. Fixes: run on AC power with `caffeinate -dimsu`
   (setup step 7); and a lesson for the Lead mandate, not applied during the run: a
   coordinator should re-brief a seat whose turn ended in an error instead of waiting.
+- **Room export redaction.** `room.json` is the console's full-session download with one
+  edit: a package-index URL that a seat's `pip` printed carried credentials, and its user-info
+  part is replaced with `[REDACTED]`, as the participant guide allows.
+  It also replaces four private identifiers of the submitter's employer and work email (five
+  occurrences, in local paths and tool output) with `[REDACTED]`. Nothing else is changed.
 - **Live data quality.** The live `runway.com` build (`dossier-runway.com.json`, stage 4) is
   `ready` with CEO, CTO and investors known, but `legal_name` unknown and
   `headcount_range` (10001+) and `funding_total` (2,000,000) contested and implausible. The
