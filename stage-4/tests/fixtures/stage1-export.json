@@ -1,0 +1,278 @@
+{
+ "token": "Cb3NPPDhPv1Rba902yfIrKEo2JcL42X1KYjWiA9Qyuk",
+ "export": {
+  "track": "dossier",
+  "format_version": 1,
+  "state": {
+   "users": [
+    {
+     "id": "u_ada",
+     "email": "ada@example.com",
+     "display_name": "Ada",
+     "password_hash": "scrypt$ce40615723b4ff49d6a3cb349563e1c7$0b6410e8709e6ec5ab868f9521100c412eda597738f47c76a7140dabcfc961cd"
+    }
+   ],
+   "tokens": [
+    {
+     "token_sha256": "76c9b34bed6668808581ff5cf57df2a0af037a0edc1c939d6ad563c1c9fab3be",
+     "user_id": "u_ada"
+    }
+   ],
+   "dossiers": [
+    {
+     "dossier_id": "d_4476c48993bfa460",
+     "domain": "halvorsen-robotics.test",
+     "state": "ready",
+     "fields": {
+      "legal_name": {
+       "value": "Halvorsen Robotics AS",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://halvorsen-robotics.test/company",
+         "excerpt": "Halvorsen Robotics trades under the registered name Halvorsen Robotics AS in all of its markets.",
+         "provider": "nimble"
+        },
+        {
+         "url": "https://companies-register.test/entity/84134936/officers",
+         "excerpt": "The register records Halvorsen Robotics AS as the registered name of the company trading as Halvorsen Robotics.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "hq_city": {
+       "value": "Valencia",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://halvorsen-robotics.test/company",
+         "excerpt": "Based in Valencia, Halvorsen Robotics serves customers across the region.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "ceo": {
+       "value": "Priya Dalton",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://halvorsen-robotics.test/leadership",
+         "excerpt": "As CEO of Halvorsen Robotics, Priya Dalton sets the company's direction.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "founded_year": {
+       "value": 2019,
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://companies-register.test/entity/84134936",
+         "excerpt": "Halvorsen Robotics was incorporated in 2019.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "headcount_range": {
+       "value": "1001-5000",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://startupindex.test/companies/halvorsen-robotics",
+         "excerpt": "Estimated staff at Halvorsen Robotics: 3,148 employees.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "funding_total": {
+       "value": 75000000,
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://techcurrent.test/2025/04/halvorsen-robotics-eyes-new-markets",
+         "excerpt": "Investors have put US$75 million of investment into Halvorsen Robotics so far.",
+         "provider": "nimble"
+        }
+       ]
+      }
+     },
+     "researched_at": "2026-03-01T09:00:00+00:00",
+     "spent_units": 46
+    },
+    {
+     "dossier_id": "d_487ed39cc96d04f5",
+     "domain": "brightwater-labs.test",
+     "state": "ready",
+     "fields": {
+      "legal_name": {
+       "value": "Brightwater Labs Inc.",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://companies-register.test/entity/70797957/officers",
+         "excerpt": "The register records Brightwater Labs Inc. as the registered name of the company trading as Brightwater Labs.",
+         "provider": "nimble"
+        },
+        {
+         "url": "https://brightwater-labs.test/company",
+         "excerpt": "Brightwater Labs trades through its registered company, Brightwater Labs Inc., which issues every invoice.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "hq_city": {
+       "value": "Columbus",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://companies-register.test/entity/70797957",
+         "excerpt": "Brightwater Labs has its registered office in Columbus.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "ceo": {
+       "value": "Felix Kowalski",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://brightwater-labs.test/leadership",
+         "excerpt": "Felix Kowalski is the chief executive of Brightwater Labs.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "founded_year": {
+       "value": 2010,
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://companyfile.test/companies/brightwater-labs",
+         "excerpt": "Year established for Brightwater Labs is 2010.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "headcount_range": {
+       "value": "51-200",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://companyfile.test/companies/brightwater-labs",
+         "excerpt": "Estimated staff at Brightwater Labs: 130 employees.",
+         "provider": "nimble"
+        }
+       ]
+      },
+      "funding_total": {
+       "value": 48500000,
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://harbourdaily.test/2025/10/brightwater-labs-bets-on-low-energy-desalination-units",
+         "excerpt": "Brightwater Labs has raised US$48.5 million in total equity funding.",
+         "provider": "nimble"
+        }
+       ]
+      }
+     },
+     "researched_at": "2026-03-01T09:00:00+00:00",
+     "spent_units": 100
+    },
+    {
+     "dossier_id": "d_4a28b58328b3b003",
+     "domain": "ferncliff-foods.test",
+     "state": "failed",
+     "fields": {
+      "legal_name": {
+       "value": null,
+       "status": "unknown",
+       "citations": []
+      },
+      "hq_city": {
+       "value": null,
+       "status": "unknown",
+       "citations": []
+      },
+      "ceo": {
+       "value": null,
+       "status": "unknown",
+       "citations": []
+      },
+      "founded_year": {
+       "value": null,
+       "status": "unknown",
+       "citations": []
+      },
+      "headcount_range": {
+       "value": null,
+       "status": "unknown",
+       "citations": []
+      },
+      "funding_total": {
+       "value": null,
+       "status": "unknown",
+       "citations": []
+      }
+     },
+     "researched_at": null,
+     "spent_units": 0
+    }
+   ],
+   "idempotency": [
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers",
+     "key": "research-0",
+     "fingerprint": "{\"domain\":\"halvorsen-robotics.test\"}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_4476c48993bfa460",
+      "domain": "halvorsen-robotics.test",
+      "state": "building"
+     }
+    },
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers",
+     "key": "research-1",
+     "fingerprint": "{\"domain\":\"brightwater-labs.test\"}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_487ed39cc96d04f5",
+      "domain": "brightwater-labs.test",
+      "state": "building"
+     }
+    },
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers/brightwater-labs.test/refresh",
+     "key": "refresh-1",
+     "fingerprint": "{}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_487ed39cc96d04f5",
+      "domain": "brightwater-labs.test",
+      "state": "building"
+     }
+    },
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers",
+     "key": "research-failed",
+     "fingerprint": "{\"domain\":\"ferncliff-foods.test\"}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_4a28b58328b3b003",
+      "domain": "ferncliff-foods.test",
+      "state": "building"
+     }
+    }
+   ]
+  }
+ }
+}

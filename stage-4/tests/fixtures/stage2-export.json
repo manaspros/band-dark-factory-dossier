@@ -1,0 +1,204 @@
+{
+ "token": "DxFHtnZ82f0lIjm9A9trGVpRJwhhjPRkVd5kxZApfdY",
+ "export": {
+  "track": "dossier",
+  "format_version": 1,
+  "state": {
+   "users": [
+    {
+     "id": "u_ada",
+     "email": "ada@example.com",
+     "display_name": "Ada",
+     "password_hash": "scrypt$ec4358dbd1bbc3eeea3d58ac08d60557$371351b84550248afd69af5af499912e70f8cceb53bb969b99d3118c93b56a78"
+    }
+   ],
+   "tokens": [
+    {
+     "token_sha256": "29713c8d35097d562a9a7edcc205e29e95b76cde6c5551cfb362b8eb50cd07de",
+     "user_id": "u_ada"
+    }
+   ],
+   "dossiers": [
+    {
+     "dossier_id": "d_737d0385eab23ee6",
+     "domain": "acme-robotics.test",
+     "state": "ready",
+     "fields": {
+      "legal_name": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      },
+      "hq_city": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      },
+      "ceo": {
+       "value": "Dana Ruiz",
+       "status": "contested",
+       "citations": [
+        {
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Dana Ruiz is the CEO of Acme Robotics.",
+         "provider": "nimble"
+        }
+       ],
+       "candidates": [
+        {
+         "value": "Dana Ruiz",
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Dana Ruiz is the CEO of Acme Robotics.",
+         "provider": "nimble",
+         "kind": "own",
+         "published_at": "2025-01-01T01:00:00+02:00",
+         "retrieved_at": "2026-02-01T09:00:00+00:00",
+         "selected": true
+        },
+        {
+         "value": "Sam Ortiz",
+         "url": "https://bizdata.test/acme",
+         "excerpt": "Acme Robotics CEO: Sam Ortiz.",
+         "provider": "nimble",
+         "kind": "aggregator",
+         "published_at": null,
+         "retrieved_at": "2026-02-01T09:00:00+00:00",
+         "selected": false
+        }
+       ]
+      },
+      "founded_year": {
+       "value": 2014,
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Acme Robotics was founded in 2014.",
+         "provider": "nimble"
+        }
+       ],
+       "candidates": [
+        {
+         "value": 2014,
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Acme Robotics was founded in 2014.",
+         "provider": "nimble",
+         "kind": "own",
+         "published_at": "2025-01-01T01:00:00+02:00",
+         "retrieved_at": "2026-02-01T09:00:00+00:00",
+         "selected": true
+        }
+       ]
+      },
+      "headcount_range": {
+       "value": "51-200",
+       "status": "known",
+       "citations": [
+        {
+         "url": "https://bizdata.test/acme",
+         "excerpt": "Acme Robotics employs about 120 people.",
+         "provider": "nimble"
+        }
+       ],
+       "candidates": [
+        {
+         "value": "51-200",
+         "url": "https://bizdata.test/acme",
+         "excerpt": "Acme Robotics employs about 120 people.",
+         "provider": "nimble",
+         "kind": "aggregator",
+         "published_at": null,
+         "retrieved_at": "2026-02-01T09:00:00+00:00",
+         "selected": true
+        }
+       ]
+      },
+      "funding_total": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      }
+     },
+     "researched_at": "2026-02-01T09:00:00+00:00",
+     "spent_units": 39
+    },
+    {
+     "dossier_id": "d_8c428b50c1597252",
+     "domain": "brightwater-labs.test",
+     "state": "failed",
+     "fields": {
+      "legal_name": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      },
+      "hq_city": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      },
+      "ceo": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      },
+      "founded_year": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      },
+      "headcount_range": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      },
+      "funding_total": {
+       "value": null,
+       "status": "unknown",
+       "citations": [],
+       "candidates": []
+      }
+     },
+     "researched_at": null,
+     "spent_units": 0
+    }
+   ],
+   "idempotency": [
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers",
+     "key": "s2-create",
+     "fingerprint": "{\"domain\":\"acme-robotics.test\"}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_737d0385eab23ee6",
+      "domain": "acme-robotics.test",
+      "state": "building"
+     }
+    },
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers",
+     "key": "s2-failed",
+     "fingerprint": "{\"domain\":\"brightwater-labs.test\"}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_8c428b50c1597252",
+      "domain": "brightwater-labs.test",
+      "state": "building"
+     }
+    }
+   ]
+  }
+ }
+}
