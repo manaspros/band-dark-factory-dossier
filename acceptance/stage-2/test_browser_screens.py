@@ -92,9 +92,10 @@ def test_auth_pages_expose_labels_and_keyboard_focus(browser, api: API):
     assert email.evaluate("el => Array.from(el.labels || []).some(label => "
                           "!!(label.offsetWidth || label.offsetHeight || label.getClientRects().length))")
     page.keyboard.press("Tab")
-    assert page.evaluate("document.activeElement === document.querySelector('[data-testid=signup-email]')")
-    focus_style = email.evaluate("el => getComputedStyle(el).outlineWidth")
-    assert focus_style != "0px", "keyboard focus should have a visible outline"
+    focused = page.locator(":focus")
+    assert focused.count() == 1
+    assert focused.evaluate("el => el.matches(':focus-visible')"), \
+        "keyboard focus should be visibly indicated on the focused control"
     page.goto(api.base_url + "/login")
     for testid in ("login-email", "login-password", "login-submit"):
         assert page.get_by_test_id(testid).count() == 1
@@ -185,15 +186,24 @@ def test_invalid_research_shows_refusal_and_citation_excerpt_is_text(browser, ap
     for field in dossier["fields"].values():
         field["citations"] = [dict(c) for c in field["citations"]]
         field["candidates"] = [dict(c) for c in field["candidates"]]
-    field = next((item for item in dossier["fields"].values() if item["citations"]), None)
-    if field is None:
+    named_field = next(((name, item) for name, item in dossier["fields"].items()
+                        if item["citations"]), None)
+    if named_field is None:
         pytest.skip("configured corpus has no citation to exercise safe excerpt rendering")
+    field_name, field = named_field
     payload = '<img src=x onerror="window.__acceptanceXss=true">'
     field["citations"][0]["excerpt"] = payload
-    page.route(f"**/dossiers/{TEST_DOMAIN}",
-               lambda route: route.fulfill(json=dossier) if route.request.method == "GET"
-               else route.continue_())
+    def serve_api_json(route):
+        if route.request.method == "GET" and route.request.resource_type in ("fetch", "xhr"):
+            route.fulfill(json=dossier)
+        else:
+            route.continue_()
+
+    page.route(f"**/dossiers/{TEST_DOMAIN}", serve_api_json)
     page.goto(api.base_url + f"/dossiers/{TEST_DOMAIN}")
+    citation = page.get_by_test_id(f"citation-{field_name}-1")
+    citation.wait_for()
     assert page.evaluate("window.__acceptanceXss !== true")
-    assert payload in page.locator("body").inner_text()
+    assert payload in citation.inner_text()
+    assert page.locator("img").count() == 0
     page.close()

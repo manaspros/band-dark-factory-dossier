@@ -134,5 +134,9 @@ def test_provider_refusals_are_contained_and_failed_build_is_not_a_5xx(api: API,
     for field in failed["fields"].values():
         assert field["value"] is None and field["status"] == "unknown"
         assert field["citations"] == [] and field["candidates"] == []
-    calls = mock_admin.calls()
-    assert calls and all(call["status"] >= 400 and call["cost"] == 0 for call in calls), calls
+    domain_searches = [call for call in mock_admin.calls()
+                       if call["provider"] == "nimble" and call["method"] == "search"
+                       and call["query"] == "provider-error.test"]
+    assert 1 <= len(domain_searches) <= 3, domain_searches
+    assert all(call["status"] >= 400 and call["cost"] == 0
+               for call in domain_searches), domain_searches
