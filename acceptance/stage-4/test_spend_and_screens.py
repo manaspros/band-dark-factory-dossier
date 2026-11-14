@@ -22,7 +22,7 @@ def test_successful_identical_provider_requests_are_not_repeated(
         if method not in ("search", "extract"):
             continue
         args = tuple((name, repr(call.get(name))) for name in
-                     ("query", "url", "operation", "render", "provider_options")
+                     ("query", "url", "urls", "operation", "render", "provider_options")
                      if name in call)
         identity = call.get("provider"), method, args
         assert identity not in seen, call

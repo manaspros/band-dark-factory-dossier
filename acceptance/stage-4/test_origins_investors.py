@@ -65,8 +65,9 @@ def test_all_fields_expose_origin_corroboration_and_investor_members(api: API, t
     assert investors["citations"] == expected_investor_citations
     assert investors["origins"] == sorted({candidate["origin"] for candidate in candidates
                                             if candidate["value"] in members})
-    assert investors["corroborated"] == bool(members) and all(
+    expected_corroborated = bool(members) and all(
         len({candidate["origin"] for candidate in names[member]}) >= 2 for member in members)
+    assert investors["corroborated"] is expected_corroborated
     if not members:
         assert investors["origins"] == [] and investors["corroborated"] is False
     investor_history = history(api, token)["fields"]["investors"]
@@ -112,8 +113,9 @@ def test_all_fields_expose_origin_corroboration_and_investor_members(api: API, t
         per_member_origins.append({candidate["origin"] for candidate in group})
     all_exec_origins = sorted(set().union(*per_member_origins) if per_member_origins else set())
     assert executives["origins"] == all_exec_origins
-    assert executives["corroborated"] == bool(per_member_origins) and all(
+    expected_exec_corroborated = bool(per_member_origins) and all(
         len(origins) >= 2 for origins in per_member_origins)
+    assert executives["corroborated"] is expected_exec_corroborated
 
 
 def test_values_include_stage4_keys_computed_at_true_at(api: API, token: str) -> None:

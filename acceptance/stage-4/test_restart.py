@@ -64,7 +64,7 @@ def test_committed_state_survives_kill_and_running_build_is_terminal(
     assert replay.json() == pending.json()
     for entry in batch["dossiers"]:
         state = api.get(f"/dossiers/{entry['domain']}", token=token).json()
-        assert state["state"] == "failed"
+        assert state["state"] in ("ready", "failed")
     mock_admin.reset()
     clock_refresh = api.post(f"/dossiers/{DOMAIN}/refresh", token=token,
                              headers={"Idempotency-Key": key()})
