@@ -5,8 +5,8 @@ import re
 from datetime import datetime, timezone
 
 from conftest import (API, FIELDS, FIELDS7, TEST_DOMAIN, TITLE_ORDER, assert_history_entry,
-                      create_build, history, new_key, parse_instant, refresh_build, set_clock,
-                      stage2_rank_key)
+                      create_build, feed, history, new_key, parse_instant, refresh_build,
+                      set_clock, stage2_rank_key)
 
 
 def test_fields_candidates_and_executives_follow_the_public_shape(api: API, token: str) -> None:
@@ -97,8 +97,12 @@ def test_candidate_true_from_matches_rendered_page_headers_when_mock_log_is_avai
     dossier, _ = create_build(api, token)
     pages = {}
     for call in mock_admin.calls():
+        # Search results can include snippets in `served`; only extract records carry
+        # the full rendered page text whose headers determine true_from.
+        if call.get("method") != "extract":
+            continue
         for page in call.get("served", []):
-            pages.setdefault((call["provider"], page["url"]), page.get("text", ""))
+            pages[(call["provider"], page["url"])] = page.get("text", "")
 
     def header_value(text: str, key: str) -> str | None:
         lines = text.splitlines()
