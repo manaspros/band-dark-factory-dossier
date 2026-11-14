@@ -1,6 +1,6 @@
 # Stage 3 (dossier) - implementation plan
 
-Companion to `plans/stage-3-matrix.md` (T1-T77, gaps G3-1/G3-2, decisions E3-1..E3-6). All
+Companion to `plans/stage-3-matrix.md` (T1-T77, documented deviations DEV-S3a/DEV-S3b, decisions E3-1..E3-6). All
 earlier rows and lead rulings stay in force:
 - retry caps, with 1.05 s backoff for 429;
 - the exact-domain search gets 3 attempts;
