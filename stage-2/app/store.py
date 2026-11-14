@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from app.domains import is_valid as is_valid_domain
 from app.errors import invalid
-from app.migrate import import_field, valid_field
+from app.migrate import import_field, is_rfc3339, valid_field
 from app.selection import empty_fields
 from app.support import FIELDS
 
@@ -155,8 +155,8 @@ def import_state(payload) -> State:
     for d in raw["dossiers"]:
         _require(isinstance(d, dict) and _is_str(d.get("dossier_id"), 64, 1)
                  and _is_str(d.get("domain")) and is_valid_domain(d["domain"])
-                 and d.get("state") in ("ready", "failed")
-                 and (d.get("researched_at") is None or _is_str(d.get("researched_at")))
+                 and _is_str(d.get("state")) and d["state"] in ("ready", "failed")
+                 and is_rfc3339(d.get("researched_at"), nullable=True)
                  and _is_int(d.get("spent_units")) and d["spent_units"] >= 0
                  and isinstance(d.get("fields"), dict) and set(d["fields"]) == set(FIELDS)
                  and all(valid_field(n, v) for n, v in d["fields"].items()), "dossier")

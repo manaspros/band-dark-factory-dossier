@@ -36,19 +36,24 @@ def _is_int(value) -> bool:
 
 
 def in_field_format(field: str, value) -> bool:
-    """Whether ``value`` is a value §4 allows for ``field``."""
+    """Whether ``value`` is a value §4 allows for ``field``.
+
+    The JSON type is always checked before any comparison or membership test, so a value
+    of any JSON type (list, object, null, bool, float, ...) gives False, never an error.
+    """
     if field == "founded_year":
         return _is_int(value) and 1800 <= value <= 2099
     if field == "funding_total":
         return _is_int(value) and value >= 0
     if field == "headcount_range":
-        return value in HEADCOUNT_LABELS
+        return _is_str(value) and value in HEADCOUNT_LABELS
     return _is_str(value) and value != "" and value == value.strip()
 
 
-def _is_time(value) -> bool:
+def is_rfc3339(value, nullable: bool) -> bool:
+    """Whether ``value`` is an RFC 3339 timestamp string (or None, when ``nullable``)."""
     if value is None:
-        return True
+        return nullable
     try:
         parse_rfc3339(value)
     except ApiError:
@@ -59,7 +64,8 @@ def _is_time(value) -> bool:
 def _valid_source(c) -> bool:
     """url, excerpt (1 to 500 characters) and a known provider."""
     return (_is_str(c.get("url")) and _is_str(c.get("excerpt"))
-            and 1 <= len(c["excerpt"]) <= MAX_EXCERPT_CHARS and c.get("provider") in PROVIDER_ORDER)
+            and 1 <= len(c["excerpt"]) <= MAX_EXCERPT_CHARS
+            and _is_str(c.get("provider")) and c["provider"] in PROVIDER_ORDER)
 
 
 def _valid_citation(c) -> bool:
@@ -68,8 +74,9 @@ def _valid_citation(c) -> bool:
 
 def _valid_candidate(field: str, c) -> bool:
     return (isinstance(c, dict) and set(c) == CANDIDATE_KEYS and in_field_format(field, c["value"])
-            and _valid_source(c) and (c["kind"] is None or c["kind"] in KINDS)
-            and _is_time(c["published_at"]) and _is_time(c["retrieved_at"])
+            and _valid_source(c) and (c["kind"] is None or (_is_str(c["kind"]) and c["kind"] in KINDS))
+            and is_rfc3339(c["published_at"], nullable=True)
+            and is_rfc3339(c["retrieved_at"], nullable=False)
             and isinstance(c["selected"], bool))
 
 

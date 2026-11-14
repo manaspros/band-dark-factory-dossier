@@ -136,3 +136,94 @@ def test_stage1_values_outside_the_field_format_are_422(client):
     bad["state"]["dossiers"][0]["fields"]["headcount_range"]["value"] = "banana"
     assert client.post("/_test/import", json=bad).status_code == 422
     assert client.get("/_test/export").json() == before
+
+
+# ---------------------------------------------------------------- every JSON type, every slot
+
+JSON_SAMPLES = [[], {}, None, True, False, 1.5, 7, -7, 0, "x", "", " x ", [[1]], {"a": [1]},
+                ["51-200"], {"value": 2014}]
+FIELD_NAMES = ["legal_name", "hq_city", "ceo", "founded_year", "headcount_range", "funding_total"]
+
+
+def _bad_values(field):
+    """Every sample that is not a value §4 allows for ``field``."""
+    from app.migrate import in_field_format
+    return [v for v in JSON_SAMPLES if not in_field_format(field, v)]
+
+
+def _stage2_export(client):
+    exported = client.get("/_test/export").json()
+    dossier = next(d for d in exported["state"]["dossiers"]
+                   if all(d["fields"][f]["candidates"] for f in FIELD_NAMES))
+    return exported, dossier["dossier_id"]
+
+
+def _assert_rejected(client, payload, before):
+    r = client.post("/_test/import", json=payload)
+    assert r.status_code == 422, (r.status_code, r.text)
+    assert r.json()["error"]["code"] == "validation_failed"
+    assert client.get("/_test/export").json() == before
+
+
+@pytest.mark.parametrize("field", FIELD_NAMES)
+@pytest.mark.parametrize("slot", ["field", "candidate", "both", "stage1"])
+def test_every_json_type_in_every_value_slot_is_422(client, field, slot):
+    exported, dossier_id = _stage2_export(client)
+    for bad in _bad_values(field):
+        payload = json.loads(json.dumps(exported if slot != "stage1" else EXPORT))
+        source = payload["state"]["dossiers"]
+        target = next(d for d in source if d["dossier_id"] == dossier_id) if slot != "stage1" \
+            else next(d for d in source if d["fields"][field]["value"] is not None)
+        if slot in ("field", "both", "stage1"):
+            target["fields"][field]["value"] = bad
+        if slot in ("candidate", "both"):
+            target["fields"][field]["candidates"][0]["value"] = bad
+        _assert_rejected(client, payload, exported)
+
+
+@pytest.mark.parametrize("key", ["url", "excerpt", "provider", "kind", "published_at",
+                                 "retrieved_at", "selected"])
+def test_every_json_type_in_other_candidate_slots_never_500(client, key):
+    exported, dossier_id = _stage2_export(client)
+    for sample in JSON_SAMPLES:
+        payload = json.loads(json.dumps(exported))
+        target = next(d for d in payload["state"]["dossiers"] if d["dossier_id"] == dossier_id)
+        candidate = target["fields"]["ceo"]["candidates"][0]
+        if candidate[key] == sample:
+            continue
+        candidate[key] = sample
+        r = client.post("/_test/import", json=payload)
+        assert r.status_code == 422, (key, sample, r.status_code)
+        assert client.get("/_test/export").json() == exported
+
+
+@pytest.mark.parametrize("slot", ["status", "citations", "candidates", "fields", "citation",
+                                  "state", "researched_at", "spent_units", "domain"])
+def test_every_json_type_in_field_and_dossier_slots_never_500(client, slot):
+    exported, dossier_id = _stage2_export(client)
+    for sample in JSON_SAMPLES:
+        payload = json.loads(json.dumps(exported))
+        target = next(d for d in payload["state"]["dossiers"] if d["dossier_id"] == dossier_id)
+        field = target["fields"]["ceo"]
+        if slot in ("status", "citations", "candidates"):
+            field[slot] = sample
+        elif slot == "citation":
+            field["citations"][0] = sample
+        elif slot == "fields":
+            target["fields"] = sample
+        else:
+            target[slot] = sample
+        r = client.post("/_test/import", json=payload)
+        assert r.status_code in (204, 422), (slot, sample, r.status_code)
+        if r.status_code == 422:
+            assert client.get("/_test/export").json() == exported
+        else:
+            client.post("/_test/import", json=exported)
+
+
+def test_researched_at_must_be_a_timestamp(client):
+    before = client.get("/_test/export").json()
+    for sample in ["yesterday", 5, [], {}, True]:
+        bad = json.loads(json.dumps(EXPORT))
+        bad["state"]["dossiers"][0]["researched_at"] = sample
+        _assert_rejected(client, bad, before)
