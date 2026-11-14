@@ -208,7 +208,7 @@ Column key as in stage 1.
 
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
-| S117 | "spend units only where they change a field" (lead) | Research runs in every build. Its cited pages are evidence (S25) and are often non-searchable `filing` pages, which have top authority and so can change the selected value and the status. The stage-1 conditional rule (D28) no longer holds. Page reads are screened so the budget goes to pages that can carry candidates (E3). **Confirmed by lead (C-S2)**. | verifier `/calls` per build | V1 |
+| S117 | "spend units only where they change a field" (lead) | Research runs in every build. Its cited pages are evidence (S25) and are often non-searchable `filing` pages, which have top authority and so can change the selected value and the status. The stage-1 conditional rule (D28) no longer holds. Page renders run in priority order until the cap (E3); unreached pages are the budget limit DEV-S2. **Confirmed by lead (C-S2)**. | verifier `/calls` per build | V1 |
 | S118 | "stage-1/ frozen" | No edits under `stage-1/`. | CMD `git diff 1135775 -- stage-1` is empty | V0 |
 | S119 | Lead carry-over: "retry cap 2 with 1.05 s backoff; exact-domain search max 3 attempts; hq_city per A.4" | Kept, except S22 (429 gets 3 retries, flagged) and S39 (hq_city selection now follows the spec rule; A.4 extraction is unchanged). | RD | V1, V3 |
 | S120 | Judging: "coherent, responsive (375 px and desktop, no horizontal scroll), clear in every state ..., labels, visible focus and contrast" (brief) | Same as S52-S61. | E2E + screenshots | V8 |
