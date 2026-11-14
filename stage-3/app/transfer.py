@@ -10,7 +10,7 @@ from __future__ import annotations
 from app import restore
 from app.domains import is_valid as is_valid_domain
 from app.errors import invalid
-from app.migrate import import_field, is_rfc3339, same_page_dates, upgrade_dossier, valid_field
+from app.migrate import import_field, is_rfc3339, upgrade_dossier, valid_field
 from app.store import BuildRecord, Dossier, IdempotencyRecord, State, User, email_key
 from app.support import FIELDS
 
@@ -70,10 +70,9 @@ def _stage3_dossier(d) -> Dossier:
              and restore.valid_fields(d["fields"], d["domain"])
              and restore.valid_dossier_times(d)
              and restore.valid_history(d["history"], d["domain"]), "dossier")
-    builds = [BuildRecord.from_json(b) for b in d["builds"]]
-    _require(restore.derived_entries(builds)[0] == d["history"], "history")
     return Dossier(d["dossier_id"], d["domain"], d["state"], d["fields"], d["researched_at"],
-                   d["spent_units"], builds, d["history"])
+                   d["spent_units"], [BuildRecord.from_json(b) for b in d["builds"]],
+                   d["history"])
 
 
 def _earlier_dossier(d) -> Dossier:
@@ -85,7 +84,6 @@ def _earlier_dossier(d) -> Dossier:
                   or all(v["value"] is None for v in d["fields"].values())), "dossier")
     fields = {name: import_field(name, value, d["researched_at"])
               for name, value in d["fields"].items()}
-    _require(same_page_dates(fields), "dossier")
     fields, builds, history = upgrade_dossier(fields, d["researched_at"], d["spent_units"])
     return Dossier(d["dossier_id"], d["domain"], d["state"], fields, d["researched_at"],
                    d["spent_units"], [BuildRecord.from_json(b) for b in builds], history)
@@ -124,9 +122,6 @@ def import_state(payload) -> State:
     if "feed" in raw:  # stage 3; earlier exports start with an empty feed
         _require(restore.valid_feed(raw["feed"], set(state.dossiers)), "feed")
         state.feed = raw["feed"]
-    for dossier in state.dossiers.values():   # each dossier's feed: what its builds added
-        _require(restore.feed_of(state.feed, dossier.domain)
-                 == restore.derived_entries(dossier.builds)[1], "feed")
     for r in raw["idempotency"]:
         _require(isinstance(r, dict) and _is_user(state, r.get("user_id"))
                  and _is_str(r.get("method"), min_len=1) and _is_str(r.get("path"))

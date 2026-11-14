@@ -147,19 +147,11 @@ def import_field(field: str, value: dict, researched_at: str | None) -> dict:
         for c in first_per_page.values()])
 
 
-def same_page_dates(fields: dict) -> bool:
-    """Whether every candidate of one URL has the same publication time, as candidates read
-    from one page do: the URL is then one page version with one true_from."""
-    published: dict[str, str | None] = {}
-    return all(published.setdefault(c.url, c.published_at) == c.published_at
-               for c in field_candidates(fields))
-
-
 def upgrade_dossier(fields: dict, researched_at: str | None, spent_units: int):
     """(fields, builds, history) of a validated stage-1 or stage-2 dossier in stage 3.
 
-    ``fields`` are the stage-2-shaped fields ``import_field`` made (``same_page_dates``
-    holds for them); the builds are returned as JSON (app.store.BuildRecord.from_json).
+    ``fields`` are the stage-2-shaped fields ``import_field`` made; the builds are returned
+    as JSON (app.store.BuildRecord.from_json).
     """
     candidates = [replace(c, true_from=utc_date(c.published_at), learned_at=c.retrieved_at)
                   for c in field_candidates(fields)]
