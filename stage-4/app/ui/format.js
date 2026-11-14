@@ -13,6 +13,19 @@ export const EXECUTIVES = "executives";
 export const EXECUTIVES_LABEL = "Executives";
 export const TITLE_LABELS = { cfo: "Chief financial officer", coo: "Chief operating officer",
                               cto: "Chief technology officer" };
+// Stage 4: the eighth field, also without the six fields' data-testid names.
+export const INVESTORS = "investors";
+export const INVESTORS_LABEL = "Investors";
+// Fields shown with their own markup and no data-testid.
+export const EXTRA_FIELDS = [EXECUTIVES, INVESTORS];
+
+// "Backed by N independent sources", for the stage-4 origin keys.
+export function sourcesNote(field) {
+  const n = (field.origins || []).length;
+  if (!n) return "";
+  return `${n} independent ${n === 1 ? "source" : "sources"}` +
+    (field.corroborated ? " (corroborated)" : "");
+}
 
 const KIND_LABELS = {
   own: "Company site", filing: "Filing registry", news: "News report",

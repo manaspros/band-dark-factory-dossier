@@ -1,14 +1,15 @@
 // `/dossiers/{domain}`: one dossier, its six fields with value, status and citations, and
-// (stage 3) its executives, shown with their own markup and no data-testid.
+// (stage 3) its executives and (stage 4) its investors, shown with their own markup and no
+// data-testid. Each field also says how many independent sources stand behind it.
 //
 // The latest read always wins (reader.js). While the dossier is building, it is read again
 // every 1.5 s until it is ready or failed.
 
 import { request } from "../api.js";
 import { banner, chip, h, replace } from "../dom.js";
-import { EXECUTIVES, EXECUTIVES_LABEL, FIELDS, FIELD_LABELS, STATE_LABELS, STATUS_LABELS,
-         TITLE_LABELS, formatDateTime, hostOf, providerLabel, rawValue, units,
-         valueParts } from "../format.js";
+import { EXECUTIVES, EXECUTIVES_LABEL, EXTRA_FIELDS, FIELDS, FIELD_LABELS, INVESTORS,
+         INVESTORS_LABEL, STATE_LABELS, STATUS_LABELS, TITLE_LABELS, formatDateTime, hostOf,
+         providerLabel, rawValue, sourcesNote, units, valueParts } from "../format.js";
 import { createPoller, createReader } from "../reader.js";
 import { submitWrite } from "../writes.js";
 
@@ -29,7 +30,8 @@ export function notFound(main, domain) {
 }
 
 function citation(field, c, n) {
-  return h("li", { class: "citation", testid: field === EXECUTIVES ? null : `citation-${field}-${n}`,
+  return h("li", { class: "citation",
+                   testid: EXTRA_FIELDS.includes(field) ? null : `citation-${field}-${n}`,
                    "data-provider": c.provider },
     h("blockquote", {}, c.excerpt),
     h("p", { class: "source" },
@@ -53,6 +55,7 @@ function fieldCard(name, field) {
     field.status === "contested" && h("p", { class: "contested-note",
                                              testid: `field-contested-${name}` },
       `Sources disagree: ${distinct} different values. Showing the best-ranked source.`),
+    sourcesNote(field) && h("p", { class: "muted small" }, sourcesNote(field)),
     h("ol", { class: "citations", testid: `field-citations-${name}`,
               "aria-label": `Sources for ${FIELD_LABELS[name]}` },
       field.citations.map((c, i) => citation(name, c, i + 1))));
@@ -77,6 +80,23 @@ function executivesCard(field) {
           "No source names a CFO, COO or CTO yet."),
     h("ol", { class: "citations", "aria-label": `Sources for ${EXECUTIVES_LABEL}` },
       field.citations.map((c, i) => citation(EXECUTIVES, c, i + 1))));
+}
+
+function investorsCard(field) {
+  const names = field.value || [];
+  return h("article", { class: "field-card", "data-section": INVESTORS,
+                        "data-status": field.status, "aria-labelledby": "label-investors" },
+    h("div", { class: "field-card__head" },
+      h("h2", { class: "field-card__label", id: "label-investors" }, INVESTORS_LABEL),
+      chip(field.status, STATUS_LABELS[field.status])),
+    names.length
+      ? h("ul", { class: "members-list" },
+          names.map((name) => h("li", { "data-value": name }, name)))
+      : h("p", { class: "field-card__value field-card__value--none" },
+          "No investor is confirmed by the company, a filing or two independent sources yet."),
+    sourcesNote(field) && h("p", { class: "muted small" }, sourcesNote(field)),
+    h("ol", { class: "citations", "aria-label": `Sources for ${INVESTORS_LABEL}` },
+      field.citations.map((c, i) => citation(INVESTORS, c, i + 1))));
 }
 
 export function mount(main, { domain }) {
@@ -131,7 +151,8 @@ export function mount(main, { domain }) {
     }[d.state];
     replace(body, status || null, h("div", { class: "fields" },
       FIELDS.map((name) => fieldCard(name, d.fields[name])),
-      d.fields[EXECUTIVES] && executivesCard(d.fields[EXECUTIVES])));
+      d.fields[EXECUTIVES] && executivesCard(d.fields[EXECUTIVES]),
+      d.fields[INVESTORS] && investorsCard(d.fields[INVESTORS])));
   }
 
   const refreshButton = h("button", { type: "button", class: "button button--primary",

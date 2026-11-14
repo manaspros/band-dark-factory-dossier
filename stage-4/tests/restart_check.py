@@ -12,6 +12,9 @@
    they run. After a restart, every acknowledged write must be there (its account signs in,
    its token is valid, its creation replays with the same answer) and every dossier listed
    must answer.
+5. (stage 4) Start a build and a batch, SIGKILL at once while their calls are in flight,
+   restart: within 10 s of the first healthy `/health` nothing is `building`, the batch is
+   `done` within its budget, spending is counted, and a refresh starts a new build.
 
 Needs only the standard library and the `docker` command.
 """
@@ -193,10 +196,37 @@ def phase_two(base, container, domains, auth, failures):
               for d in listed), failures)
 
 
+def phase_three(base, container, domains, auth, failures):
+    fresh = [f"inflight-{d}" for d in domains]
+    call(base, "POST", "/dossiers", {"domain": fresh[0]}, {**auth, "Idempotency-Key": "if-1"})
+    status, batch = call(base, "POST", "/batches", {"domains": fresh[1:], "budget_units": 90},
+                         {**auth, "Idempotency-Key": "if-batch"})
+    subprocess.run(["docker", "kill", container], check=True, capture_output=True)
+    subprocess.run(["docker", "start", container], check=True, capture_output=True)
+    wait_health(base)
+    healthy = time.monotonic()
+    for domain in fresh:
+        while True:
+            body = call(base, "GET", f"/dossiers/{domain}", headers=auth)[1]
+            if body["state"] != "building" or time.monotonic() - healthy > 10:
+                break
+            time.sleep(0.2)
+        check(f"in-flight build of {domain} ended ({body['state']}, {body['spent_units']} units)"
+              " within 10 s", body["state"] in ("ready", "failed")
+              and 0 <= body["spent_units"] <= 80, failures)
+    view = call(base, "GET", f"/batches/{batch['batch_id']}", headers=auth)[1]
+    check(f"batch done within its budget ({view['spent_units']} of 90)",
+          view["state"] == "done" and view["spent_units"] <= 90, failures)
+    check("refresh starts a new build after the restart",
+          call(base, "POST", f"/dossiers/{fresh[0]}/refresh", None,
+               {**auth, "Idempotency-Key": "if-refresh"})[0] == 202, failures)
+
+
 def main(base, container, *domains):
     failures: list[str] = []
     auth = phase_one(base, container, list(domains), failures)
     phase_two(base, container, list(domains), auth, failures)
+    phase_three(base, container, list(domains), auth, failures)
     print(f"restart check: {'FAILED ' + str(len(failures)) if failures else 'passed'}")
     return 1 if failures else 0
 

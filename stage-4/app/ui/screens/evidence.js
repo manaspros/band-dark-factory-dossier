@@ -1,16 +1,19 @@
 // `/dossiers/{domain}/evidence`: every candidate of every field, in selection-rule order.
-// Executives (stage 3) are listed by title in their own section, with no data-testid.
+// Executives (stage 3) and investors (stage 4) are listed in their own sections, with no
+// data-testid. Each candidate also shows its origin (stage 4).
 
 import { request } from "../api.js";
 import { banner, chip, h, replace } from "../dom.js";
-import { EXECUTIVES, EXECUTIVES_LABEL, FIELDS, FIELD_LABELS, STATUS_LABELS, TITLE_LABELS,
-         formatDate, hostOf, kindLabel, providerLabel, rawValue } from "../format.js";
+import { EXECUTIVES, EXECUTIVES_LABEL, EXTRA_FIELDS, FIELDS, FIELD_LABELS, INVESTORS,
+         INVESTORS_LABEL, STATUS_LABELS, TITLE_LABELS, formatDate, hostOf, kindLabel,
+         providerLabel, rawValue } from "../format.js";
 import { createReader } from "../reader.js";
 import { notFound, valueNode } from "./dossier.js";
 
 function candidate(field, c, n) {
   const executives = field === EXECUTIVES;
-  return h("li", { class: "candidate", testid: executives ? null : `candidate-${field}-${n}`,
+  return h("li", { class: "candidate",
+                   testid: EXTRA_FIELDS.includes(field) ? null : `candidate-${field}-${n}`,
                    "data-title": c.title ?? null,
                    "data-value": rawValue(c.value), "data-provider": c.provider,
                    "data-kind": c.kind ?? "", "data-url": c.url,
@@ -26,6 +29,7 @@ function candidate(field, c, n) {
       h("span", {}, c.published_at ? `Published ${formatDate(c.published_at)}`
         : "Publication date not stated"),
       h("span", {}, `via ${providerLabel(c.provider)}`),
+      c.origin && h("span", {}, `source ${c.origin}`),
       h("a", { href: c.url, rel: "noopener noreferrer", target: "_blank", class: "wrap" },
         hostOf(c.url))));
 }
@@ -45,18 +49,18 @@ function section(name, field) {
             "No source states this field.")));
 }
 
-function executivesSection(field) {
-  return h("section", { class: "stack", "data-section": EXECUTIVES,
-                        "aria-labelledby": "evidence-title-executives" },
+function extraSection(name, label, field, empty) {
+  return h("section", { class: "stack", "data-section": name,
+                        "aria-labelledby": `evidence-title-${name}` },
     h("div", { class: "section-title" },
-      h("h2", { id: "evidence-title-executives" }, EXECUTIVES_LABEL),
+      h("h2", { id: `evidence-title-${name}` }, label),
       chip(field.status, STATUS_LABELS[field.status]),
       h("span", { class: "muted small" }, `${field.candidates.length} ` +
         (field.candidates.length === 1 ? "source" : "sources"))),
     field.candidates.length
       ? h("ol", { class: "candidates" },
-          field.candidates.map((c, i) => candidate(EXECUTIVES, c, i + 1)))
-      : h("p", { class: "empty" }, "No source names a CFO, COO or CTO."));
+          field.candidates.map((c, i) => candidate(name, c, i + 1)))
+      : h("p", { class: "empty" }, empty));
 }
 
 export function mount(main, { domain }) {
@@ -78,7 +82,10 @@ export function mount(main, { domain }) {
       d.state === "building" && banner("info", {},
         "A new research run is in progress; this shows the last completed results."),
       FIELDS.map((name) => section(name, d.fields[name])),
-      d.fields[EXECUTIVES] && executivesSection(d.fields[EXECUTIVES]));
+      d.fields[EXECUTIVES] && extraSection(EXECUTIVES, EXECUTIVES_LABEL, d.fields[EXECUTIVES],
+                                           "No source names a CFO, COO or CTO."),
+      d.fields[INVESTORS] && extraSection(INVESTORS, INVESTORS_LABEL, d.fields[INVESTORS],
+                                          "No source names an investor."));
   });
   main.append(
     h("section", { class: "stack" },
