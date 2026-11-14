@@ -23,7 +23,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 
 | ID | Quote (section) | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
-| R1 | "Every value the service asserts cites at least one excerpt that a provider endpoint served to this service, and that excerpt supports the value." (§1.1) | Every `known` field has >=1 citation whose excerpt came from provider-served text and passes Appendix A. | S `test_build_a_dossier` (`assert_citations`) | U6 `evidence.py`, U5 `support.py` |
+| R1 | "Every value the service asserts cites at least one excerpt that a provider endpoint served to this service, and that excerpt supports the value." (§1.1) | Every `known` field has >=1 citation whose excerpt came from provider-served text and passes Appendix A. | PARTIAL: S `test_build_a_dossier` only checks that the excerpt is a substring of the page text and that the value is in the expected set, not Appendix A support. NOT EXERCISED for support -> UT `test_support.py` (A.2 table and A.4 cases), UT `test_evidence.py::every_citation_supports_its_value` (re-runs `supports()` on every citation `decide()` emits, over synthetic pages built from the §4 and Appendix A example sentences, including conflicting and negated ones). Verifier: re-runs `support.supports(excerpt, field, domain)` on every citation of a built dossier from the mock | U6 `evidence.py`, U5 `support.py` |
 | R2 | "No citation is invented, reworded, or attached to a value it does not support." (§1.1) | Excerpt is the served sentence (only whitespace collapsed); a citation is attached only to the value it supports. | S `test_build_a_dossier`; NOT EXERCISED for multi-value pages -> UT `test_evidence.py::conflicting_values_cite_only_chosen` | U5, U6 |
 | R3 | "No build of a dossier spends more than 80 units (§9)." (§1.2) | Hard cap per build, enforced by reservation before each call. | NOT EXERCISED directly -> UT `test_budget.py` (fake web layer counts units incl. timeouts/concurrency); verifier reads mock `/calls` log cost sum per build | U7 `budget.py` |
 | R4 | "The following apply to all operations, including concurrent requests and retries" (§1) | R1-R3 hold under concurrency and retries (incl. idempotent replays and provider retries). | NOT EXERCISED -> UT budget reservation under `asyncio.gather`; RD | U7, U8 |
@@ -51,6 +51,10 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R21 | "Disk ephemeral; state need not survive a container restart" (§2 limits) | In-memory state is acceptable. | n/a (permission) | U2 |
 | R22 | "Runtime assets and dependencies must be included in the image." (§2) | All pip deps installed at build time. | harness run | U1 |
 | R23 | "Never commit credentials" (brief constraint) | No keys in repo, Dockerfile, RUN.md or logs. | NOT EXERCISED -> CMD `git grep -i "api_key\s*=" stage-1` | U1, U4 |
+| R216 | "Build from the supplied requirements. Source code, API documentation and schemas from existing products in this domain must not be used." (preamble) | Clean room: the builder implements from this spec and the plans only. No code, API docs or schemas from company-data or enrichment products are copied or consulted. The supplied mock (`challenges/dossier/web/mockweb`) and visible tests are harness material, not a product. They may inform wiring but never the API shape. | NOT EXERCISED -> RD: verifier checks that `stage-1/` has no vendored third-party product code and that RUN.md/README cite only this spec and WebRouter docs; builder states sources consulted in its handoff | U1 (RUN.md "Sources" line), all items |
+| R217 | "WebRouter's own documentation may be used." (preamble) | Permission: the WebRouter README/docstrings (read for this plan from the 0.12.0 wheel) are the only external docs used. | n/a (permission); RD | U4 |
+| R218 | "The submission is a containerized HTTP service, not a Python package. Python is not required in the implementation." (§2) | Deliverable is the image plus RUN.md. No `setup.py`/`pyproject` packaging or importable public API is needed; Python is chosen freely (D4). | harness build/run; RD (no packaging files) | U1 |
+| R219 | "The submitted `Dockerfile` is built and started, and only its HTTP behavior is exercised; it does not import or execute the submission's source files on the host that runs it." (§2) | Everything (deps, startup, state) lives inside the image; nothing depends on host files, mounts or a host Python. The unit tests in `stage-1/tests/` are developer proof only and are not part of the runtime contract. | harness run; CMD build and run from a clean clone with no host venv | U1 |
 
 ## §3 Runtime contract
 
@@ -77,7 +81,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R42 | "Timestamps in responses are RFC 3339 with an explicit offset" (§3.5) | Emit `isoformat()` of an aware datetime, keeping the offset the clock was set with (D10). | D `test_researched_at_is_the_time_of_the_request` | U2 |
 | R43 | "Unknown fields in a request body are ignored, never an error." (§3.5) | | A `test_unknown_body_fields_are_ignored`, D `test_unknown_body_fields_are_ignored` | U2 `requests.py` |
 | R44 | "Unknown query parameters are ignored." (§3.5) | | D `test_unknown_query_parameters_are_ignored` | U9 |
-| R45 | "IDs are opaque strings of at most 64 characters." (§3.5) | Generated ids `u_`/`d_` + 16 hex chars; seeded ids come from fixture (D11). | NOT EXERCISED -> RD | U3, U8 |
+| R45 | "IDs are opaque strings of at most 64 characters." (§3.5) | Generated ids are `u_`/`d_` + 16 hex chars (D11). Seeded ids (reset fixture) and imported ids must be non-empty strings of at most 64 characters; otherwise reset/import is 422 `validation_failed` and changes nothing (D30). | NOT EXERCISED -> UT `test_auth.py::reset_rejects_65_char_id`, `test_export_import.py::import_rejects_65_char_id`; RD for generated ids | U3, U8, U10 |
 
 ## §4 Model
 
@@ -98,9 +102,9 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R58 | Field shape `{ "value", "status", "citations": [ { "url", "excerpt", "provider" } ] }` (§4) | | S `test_build_a_dossier` (`assert_dossier`) | U6, U8 |
 | R59 | "`status` is `known` when `value` is not null, and `unknown` when it is." (§4) | | S `test_build_a_dossier` | U6 |
 | R60 | "A `known` field has one or more citations. An `unknown` field has `"value": null` and `"citations": []`." (§4) | | S `test_build_a_dossier` | U6 |
-| R61 | "`url` is the URL of the page the excerpt was served for, `provider` is `nimble` or `tavily`, the provider that served it." (§4) | For an extract, `url` = the URL WebRouter reports for the document (D12); for a research claim, the claim citation URL. | S `assert_citations` | U4, U6 |
-| R62 | Definition of **evidence**: "every page that some search, through any provider and for any query naming the company (as in Appendix A.2), returns, with its full text, and every claim that a `nimble` research run for the company asking for all six fields answers with." (§4 Evidence) | The build approximates "all evidence" with field-targeted searches + extracts + one research run (plan §Search strategy). Pages beyond what any affordable query returns are a known residual risk (Open-1). | S `test_build_a_dossier` (value in expected set) | U7 |
-| R63 | "every build makes exactly one whose query is exactly the company's normalised domain, through a provider of its choice" (§4) | Exactly one *successful* search with query == normalised domain; refused attempts are retried until one succeeds; no other query equals the domain. | NOT EXERCISED in visible checks -> UT `test_build.py::exactly_one_domain_query` (fake web: first attempt 429) | U7 |
+| R61 | "`url` is the URL of the page the excerpt was served for, `provider` is `nimble` or `tavily`, the provider that served it." (§4) | For an extract, `url` = the URL WebRouter reports for the document (D12); for a research claim, the claim citation URL. `provider` is the provider of the call that returned the text (always `nimble` under D1); each candidate carries the provider and URL from the `CallOutcome` that produced it, never from a constant at render time. | PARTIAL: S `assert_citations` checks URL/text only and `assert_field` only that `provider` is an allowed label. NOT EXERCISED for provenance -> UT `test_build.py::citation_provenance` (fake web records each served (provider, url, text); every emitted citation's (provider, url) is among them and its excerpt is a whitespace-collapsed substring of that text). Verifier: correlates citations with the mock `/calls` log (`served` entries per call) | U4, U6, U7 |
+| R62 | Definition of **evidence**: "every page that some search, through any provider and for any query naming the company (as in Appendix A.2), returns, with its full text, and every claim that a `nimble` research run for the company asking for all six fields answers with." (§4 Evidence) | The build approximates "all evidence" with field-targeted searches + extracts + one research run (plan §Search strategy). Pages beyond what any affordable query returns are a known residual risk (Open-1). Every page a build gathers (full text) and every research claim it receives is fed to `support.candidates()`; nothing gathered is dropped before evaluation. | PARTIAL: S `test_build_a_dossier` checks only that values are in the expected set; it does not check coverage. NOT EXERCISED for coverage -> UT `test_build.py::all_gathered_text_is_evaluated` (fake web with a supporting sentence planted in the last-extracted page and in a research claim; both reach the field). Verifier: for each sample company, compare the URLs the build extracted (mock `/calls`) with the union of searchable company pages in `challenges/dossier/web/corpus/sample/<domain>.json`, and list any supported value on an un-gathered page (Open-1) | U7 |
+| R63 | "every build makes exactly one whose query is exactly the company's normalised domain, through a provider of its choice" (§4) | Exactly one *successful* search with query == normalised domain; no other query equals the domain. Refused attempts cost 0 and are retried per D29: while any other call of the build has succeeded, retries continue until success or the build deadline; only when nothing in the build has succeeded does it stop after 3 retries (so an all-refused build fails fast). | NOT EXERCISED in visible checks -> UT `test_build.py::exactly_one_domain_query` (fake web: first attempt 429), `::domain_query_retried_while_others_succeed` (refused 5 times, then succeeds, build ready with exactly one success), `::all_refused_fails_fast` | U7 |
 | R64 | "its other such searches use other queries." (§4) | All other search queries differ from the bare domain string. | UT same as R63 | U7 |
 | R65 | "A search that a provider answers with an error does not count." (§4) | A refused domain search is retried. | UT same as R63 | U7 |
 | R66 | "The excerpt is copied character for character from that served text, except that any run of whitespace may be written as a single space. It is 1 to 500 characters long." (§4 citation) | Excerpt = one A.1 sentence with whitespace runs collapsed; sentences >500 chars are not citable. | S `assert_citations`; UT length bound | U5 |
@@ -109,7 +113,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 | R69 | "A research answer carries a claimed value for a field and a citation for the claim. The claim is asserted only when its citation supports it." (§4) | Research claims are candidates: each claim excerpt is run through A.2 for the claim's field (path `$.field`); the value used is the one A.5 derives from the excerpt, never the research `structured` value. | NOT EXERCISED -> UT `test_evidence.py::research_claim_unsupported_is_dropped` | U6 |
 | R70 | "A field is `unknown` when no evidence supports a value for it, even when a research answer claims one." (§4) | | UT same as R69 | U6 |
 | R71 | "When the evidence supports more than one value for a field, the field holds one of them and cites only excerpts that support that value." (§4) | Choice rule D7. | NOT EXERCISED -> UT `test_evidence.py::conflict` | U6 |
-| R72 | "Every page has a URL, a title and a text. A text may begin with **header lines**, each of the form `Name: value`, where the name is a capitalised word or several joined by `-`." (§4 Pages) | Header-line regex: start of line, capitalised word(s) joined by `-`, then `: ` (D13). | UT `test_support.py::header` | U5 |
+| R72 | "Every page has a URL, a title and a text. A text may begin with **header lines**, each of the form `Name: value`, where the name is a capitalised word or several joined by `-`." (§4 Pages) | Header-line rule per D13: the name is one or more A.4 capitalised words (any alphabet) joined by `-`, then `:`. | UT `test_support.py::header` incl. non-ASCII names (`Größe: 5`, `Über-Uns: x` are stripped; `CEO: Sam Ortiz` and `Acme robotics: x` are not header lines) | U5 |
 | R73 | "The header ends at the first empty line; everything after it is the page's **prose**. A text whose first line is not a header line has no header and is all prose." (§4 Pages) | Text with header lines and no empty line has no prose (D13). | UT | U5 |
 | R74 | "The header line `Facts:` ... is informative only: citations come from the prose, and whether an excerpt supports a value is decided by Appendix A alone. The service may ignore other header lines." (§4) | `Facts:` is ignored entirely (D14). | RD | U5 |
 | R75 | Fixture: "`now` is required and sets the clock (§3.4)." (§4 Fixture) | Missing `now` -> 422. | A `test_reset_needs_now` | U3 |
@@ -295,7 +299,7 @@ is larger. A row marked with a supplied check may still have cases those checks 
 
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
-| R213 | "keep research spend minimal and only where it changes a field" (lead decision) | Nimble-only, lite searches + per-URL extract + one research run; ~45-55 units typical, cap 80. | verifier reads mock `/calls` per build | U7 |
+| R213 | "keep research spend minimal and only where it changes a field" (lead decision) | Searches and extracts run first. The 25-unit research run is started only if, after them, at least one of the six fields has no supported value (D28). Research can then only turn `unknown` fields into `known`. When all six are already known, a research claim could at most add another valid value, which does not change any field's status, so it is skipped. Typical spend is ~25-30 units without research and ~50-55 with it, cap 80. | NOT EXERCISED -> UT `test_build.py::research_skipped_when_all_known`, `::research_run_when_a_field_unknown`; verifier reads mock `/calls` per build | U7 |
 | R214 | "maintainable code" (task constraint) | Small modules, one responsibility each, docstrings on public functions, unit tests for Appendix A. | RD | all |
 | R215 | "No .git inside stage folders." (brief) | | CMD `find stage-1 -name .git` empty | U1 |
 
@@ -305,9 +309,15 @@ is larger. A row marked with a supplied check may still have cases those checks 
   returns. That set is unbounded, while a build may spend at most 80 units. A build can only
   approximate it. The plan covers it with field-targeted queries (plan §Search strategy) and
   records the residual risk as Open-1. This is not resolved silently.
-- **C2 (R63)**: "exactly one" domain-query search is impossible to guarantee if every attempt is
-  refused. The plan retries refused attempts within the budget. If none succeeds, the build is
-  `failed` only when no other call succeeded either.
+- **C2 (R63 vs R124/R130)**: "exactly one" successful domain-query search cannot be guaranteed if
+  the provider refuses that query for the whole build. Plan (D29): refused attempts are free and
+  are retried until success or the build deadline (270 s) while any other call has succeeded.
+  So a `ready` build lacks the domain search only if Nimble refused that one query for about
+  270 s while answering others. In that residual case R124 (the build must end `ready` because
+  some calls succeeded) and R130 (it must end within 300 s) win over R63. **Flagged for lead**:
+  the plan accepts this residual case rather than failing a build whose other calls succeeded.
+  If every call in the build is refused, retries stop after 3 and the build is `failed`, which
+  matches R124.
 
 ## Decision log
 
@@ -342,9 +352,14 @@ is larger. A row marked with a supplied check may still have cases those checks 
   existing ids (including seeded ones).
 - **D12** A citation's `url` is the URL the provider returned for the served document (the
   extract's document URL, the research claim's URL), not the URL the service asked for.
-- **D13** Header line = `^[A-Z][a-z]+(-[A-Z][a-z]+)*: ` (capitalised words per A.4, Unicode-aware)
-  followed by a value. Only a leading block counts. If a text has header lines and no empty
-  line, it has no prose.
+- **D13** A line is a header line when it starts with a *name* followed directly by `:`. The name
+  is one or more capitalised words joined by single `-`. A capitalised word is exactly as
+  defined in A.4 and implemented by the same scanner as A.4: one character with
+  `str.isupper()` followed by one or more characters with `str.islower()`, any alphabet. After
+  the `:` comes either a space and the value, or the end of the line. Only a leading block of
+  such lines counts. The block ends at the first empty line (a line that is empty after
+  stripping `\r`). If a text has header lines and no empty line, it has no prose. If the first
+  line is not a header line, the text has no header.
 - **D14** `Facts:` and every other header line are ignored. They are never used as values or to
   steer the build.
 - **D15** Email uniqueness and login lookup are case-insensitive on the whole address. The
@@ -375,6 +390,21 @@ is larger. A row marked with a supplied check may still have cases those checks 
   decimal part.
 - **D27** Amounts that do not come to whole dollars are ignored as values. They neither support
   nor conflict.
+- **D28** Research is conditional (lead constraint R213). It runs only when, after all searches
+  and extracts, some field has no supported value, and only if 25 units remain. Extracts are
+  capped so that 25 units stay available while research might be needed. If the remaining
+  budget is under 25, research is skipped and the build completes with what it has (R159).
+  When it runs, it still asks for all six fields (R160 and the §4 evidence definition), and
+  each claim is evaluated only for its own field.
+- **D29** Retry policy for refused calls (HTTP error status, 0 units). The bare-domain search is
+  retried with backoff (0.25 s doubling, capped at 2 s) until it succeeds or the build
+  deadline, as long as any other call of the build has succeeded. If no call has succeeded, it
+  stops after 3 retries. Every other call gets at most 3 retries. Timeouts and connection
+  errors are charged and never retried.
+- **D30** Fixture and import ids: a user `id` must be a non-empty string of at most 64
+  characters, and ids must be unique. Dossier ids in an import follow the same rule. A
+  violation is 422 `validation_failed` with nothing changed. This is the §3.5 bound applied
+  to externally supplied ids, so every id the service returns satisfies it.
 
 ## Open items (unverified)
 

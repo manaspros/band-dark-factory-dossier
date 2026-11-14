@@ -48,24 +48,35 @@ Per build, all through `nimble`, with `max_results=10`:
 
 | Wave | Call | Count | Units |
 |---|---|---|---|
-| 1 (concurrent) | research run: `submit_research(query=f"Company profile of {domain}: legal_name, hq_city, ceo, founded_year, headcount_range, funding_total", output_schema=SIX_FIELD_SCHEMA, effort="low")` | 1 | 25 |
 | 1 (concurrent) | search `lite`, query = exactly the normalised domain | 1 | 1 |
 | 1 (concurrent) | search `lite`, one per field: `f"{domain} {terms}"` with terms from A.3 (e.g. `"legal name registered name"`, `"headquartered in based in head office"`, `"chief executive officer CEO"`, `"founded established incorporated"`, `"employees staff headcount"`, `"raised funding investment"`) | 6 | 6 |
 | 1 (concurrent) | search `lite`, query = company name (`acme robotics`) | 1 | 1 |
 | 2 (concurrent, at most 8 in flight) | extract (default markdown format, no `render`), one URL per call, for the union of result URLs in rank order: domain query first, then field queries, then name query | <=N | 1 each |
-| 3 | await research result (poll) | - | 0 |
+| 3 | evaluate all gathered text (`support.candidates`) -> provisional fields | - | 0 |
+| 4 (only if some field is unknown, D28) | research run: `submit_research(query=f"Company profile of {domain}: legal_name, hq_city, ceo, founded_year, headcount_range, funding_total", output_schema=SIX_FIELD_SCHEMA, effort="low")`, then await the result | 0 or 1 | 0 or 25 |
 
-- Typical spend: 25 + 8 + about 16 to 20 extracts, so about 50 to 55 units. **Budget rule:**
-  research (25) and the 8 searches (8) are reserved first, which leaves 47 for extracts. URLs
-  beyond the remaining budget are not extracted. The cap is never crossed (R159).
+- Typical spend: 8 + about 16 to 20 extracts, so about 25 to 30 units. Add 25 when research
+  is needed. **Budget rule:** the 8 searches (8) are reserved first. Extracts may use at most
+  80 - 8 - 25 = 47 units, which keeps 25 available for a possible research run. Research runs
+  only if a field is still unknown after wave 3 and 25 units remain. URLs beyond the extract
+  allowance are not extracted. The cap is never crossed (R159).
+- **Why research is conditional (lead constraint, R213, D28):** a research claim only matters
+  if it supports a value for a field that has none. For a field that already has a supported
+  value, a claim could add only another valid value, and §4 lets the field keep either. So
+  research changes the outcome exactly when some field is unknown, and runs only then.
 - **Why lite plus extract and not deep search:** lite costs 1 unit and returns 10 URLs. Nimble
   extract costs 1 unit per page and returns the full served text, so a full page costs 1 unit
   plus a share of a search. `deep` costs 15 units for at most 10 full pages. Field-targeted
   queries put the company's pages that carry field statements at the top of each result list.
   Each query also contains the domain, so the company's own pages rank first.
-- **Exactly one domain query (R63-R65):** the domain query is the only query that equals the
-  domain string. All other queries add terms. If it is refused (HTTP error status, 0 units),
-  retry it (see below). After one success, never repeat it.
+- **Exactly one domain query (R63-R65, D29):** the domain query is the only query that equals
+  the domain string. All other queries add terms. If it is refused (HTTP error status, 0
+  units), it is retried with backoff starting at 0.25 s, doubling, capped at 2 s. Retries
+  continue until it succeeds or the build deadline, as long as any other call of the build has
+  succeeded. If nothing in the build has succeeded, it stops after 3 retries, so an all-refused
+  build fails fast. After one success it is never repeated. The residual case is flagged to
+  lead as matrix C2: the domain query is refused for the whole build while other calls
+  succeed.
 - **Research (R69, R160):** the query contains the normalised domain. The schema's
   `properties` are exactly the six field names (types: string/integer, nullable). Claims come
   from `ResearchResponse.citations` with `field == "$.<name>"`. For each claim, take every
@@ -74,15 +85,16 @@ Per build, all through `nimble`, with `max_results=10`:
 - **Lite snippets** are used for URL discovery only, never as citations. Citations come from
   extracted page prose and research excerpts.
 - **Retries:** only *refused* calls are retried, i.e. a `ProviderError` whose `original` is an
-  SDK HTTP-status error (any 4xx/5xx), which costs 0 units. Up to 3 retries with 0.25 s / 0.5 s
-  / 1 s backoff, within the build deadline. Timeouts and connection errors are charged in full
+  SDK HTTP-status error (any 4xx/5xx), which costs 0 units. The domain query follows the rule
+  above. Every other call gets up to 3 retries with 0.25 s / 0.5 s / 1 s backoff, within the
+  build deadline. Timeouts and connection errors are charged in full
   and **not** retried. SDK-internal retries are off: `provider_config={"nimble":
   {"max_retries": 0, "timeout": 45}}` (matrix Open-2). Fallback rule if the exception type
   cannot be told apart (Open-3): treat an unknown failure as charged, which is safe for R3.
 - **Extract cost (R157):** each extract call is charged 1 unit whether it returns a document, a
   `failures` entry, or raises after an HTTP 200. Only a refused HTTP status is free.
-- **Time (R127-R130, D8):** wave 1 runs concurrently, wave 2 runs concurrently, and research is
-  awaited last. Each call has a 45 s timeout. The research result is awaited until build start
+- **Time (R127-R130, D8):** wave 1 runs concurrently, wave 2 runs concurrently, and the
+  conditional research run comes last (the mock completes it on the first poll). Each call has a 45 s timeout. The research result is awaited until build start
   + 270 s. If the deadline passes, the build decides with what it has. With 1-second mock
   calls this takes 3 to 4 s, inside 10 s.
 - **Outcome (R124):** `failed` iff zero provider calls succeeded (a refused or timed-out call
@@ -100,9 +112,14 @@ split between writers without collisions. Build order is U1 -> U11.
   `stage-1/requirements.txt`, `stage-1/requirements-dev.txt`, `stage-1/.dockerignore`.
   `stage-1/RUN.md` gives one build+run command (`docker build -t dossier stage-1 && docker run
   --rm -p 8080:8080 -e PORT=8080 -e NIMBLE_API_KEY -e NIMBLE_BASE_URL dossier`) and says how to
-  run the unit tests.
-- **Rows:** R6-R8, R12, R13, R16, R20-R23, R215.
+  run the unit tests. RUN.md also has a "Sources" line: built from the stage-1 requirements and
+  WebRouter's own documentation only (R216, R217). There are no packaging files (`setup.py`,
+  `pyproject.toml`): the deliverable is the image (R218).
+- **Rows:** R6-R8, R12, R13, R16, R20-R23, R215-R219.
 - **Proof:** harness build; `grep webrouter stage-1/requirements.txt`; `find stage-1 -name .git`.
+  For R219, build and run from a fresh clone on a host with no project virtualenv; `/health`
+  must answer 200. For R216, the verifier reads the code (no vendored or copied third-party
+  product code or schemas), and the builder's handoff lists the sources it consulted.
 - **Edges:** no network at container start; no key value appears in any file; image builds
   from a clean checkout.
 - **Files:** `stage-1/Dockerfile`, `stage-1/RUN.md`, `stage-1/requirements*.txt`,
@@ -143,12 +160,14 @@ split between writers without collisions. Build order is U1 -> U11.
     their `sha256` is stored. Emails are unique case-insensitively (D15); email shape per D19.
   - `app/control.py`: `GET /health`; `POST /_test/reset` validates the fixture fully
     (`now` required and RFC 3339; `users` list optional, default empty; each user has string
-    `id`, `email`, `password`, `display_name`; duplicate emails -> 422; duplicate ids -> 422),
+    `id`, `email`, `password`, `display_name`; `id` is 1-64 characters (D30); duplicate emails
+    -> 422; duplicate ids -> 422),
     hashes passwords, then swaps state, bumps the generation and sets the clock in one
     critical section. `POST /_test/clock`.
 - **Rows:** R25, R27-R32, R34, R35, R39, R40, R45, R75-R78, R82, R92-R102, R176.
 - **Proof:** supplied A tests; UT `test_auth.py` (seeded login returns fixture id; export
-  contains no plaintext password).
+  contains no plaintext password; a 64-character fixture id is accepted, while a 65-character
+  or empty id gives 422 and leaves the state unchanged).
 - **Edges:** signup of a seeded email gives 409; two concurrent signups with one email give
   one 201 and one 409 (the email check and insert happen after hashing, inside the critical
   section); reset while builds run (generation bump, R31); reset with zero users; password of
@@ -195,7 +214,10 @@ split between writers without collisions. Build order is U1 -> U11.
   whole-word matching (`CEOs`, `unfounded`, `notable` do not match `CEO`, `founded`, `not`);
   conflicts (`founded in 2014 and 2015` gives no value; `51-200` gives a range but `40-60`
   gives none); a non-whole amount (`$1.2345k`) is ignored; other currencies (`€12M`, `A$12M`);
-  header removal; a 501-char sentence is not citable.
+  header removal per D13: `Facts: {...}`, `Größe: 5` and `Über-Uns: x` header lines are
+  stripped. A first line `CEO: Sam Ortiz` (an uppercase word, not a capitalised one) is not a
+  header line, so the text is all prose. A header with no following empty line leaves no
+  prose. A 501-char sentence is not citable.
 - **Edges:** empty text; text with only header lines; `\r\n`; a sentence ending at end of
   line without whitespace after; non-ASCII letters adjacent to matches; the domain written in
   uppercase inside a sentence; `www.` prefix adjacent to the domain match.
@@ -217,19 +239,29 @@ split between writers without collisions. Build order is U1 -> U11.
   bool`, `refund(units)` for refused calls, and `spent`. Each charged unit is also added
   immediately to the dossier's live `build_spent` when the generation still matches.
   `app/build.py`: `run_build(store, dossier_id, generation, started_at)` implements the wave
-  plan above. At the end, if the generation is still current, it does one synchronous commit:
+  plan above, including the conditional research (D28) and the domain-query retry policy
+  (D29). Every candidate carries the provider and URL of the call outcome that served its text
+  (R61). At the end, if the generation is still current, it does one synchronous commit:
   on `ready` it replaces fields, sets `researched_at = started_at` and outcome `ready`; on
   `failed` it sets outcome `failed` and leaves fields and `researched_at` as they were. Either
   way it moves `build_spent` into `spent_units` and clears `running`. Exceptions inside the
   build are caught and the build ends normally (`failed` if nothing succeeded).
-- **Rows:** R3, R4, R31, R62-R65, R120, R124, R125, R127-R131, R141, R145, R152, R155-R157,
-  R159, R160, R213.
+- **Rows:** R1, R3, R4, R31, R61-R65, R120, R124, R125, R127-R131, R141, R145, R152,
+  R155-R157, R159, R160, R213.
 - **Proof:** UT `test_build.py` with a fake `web` module. Cases: (a) the domain query is
   refused once, then succeeds, and is made exactly once successfully; (b) total units <= 80
   when the search returns 30 distinct URLs; (c) a timeout is charged; (d) all calls refused
   gives `failed`, fields unchanged, `spent_units` 0; (e) a reset mid-build leaves the new
   state untouched; (f) the deadline is hit and the build decides with partial data; (g) a
-  refresh charges again. CMD: time one build against the harness mock (<10 s).
+  refresh charges again; (h) the domain query is refused 5 times while other searches succeed,
+  is retried, succeeds once, and the build ends `ready`; (i) every call is refused, so the
+  build ends `failed` within about 2 s; (j) research is skipped when all six fields are known
+  from pages, and runs when one is unknown (and its supported claim fills that field, while
+  an unsupported claim leaves it unknown); (k) citation provenance: every emitted citation's
+  (provider, url) was served by a fake call, and its excerpt is a whitespace-collapsed
+  substring of that call's text; (l) all gathered text is evaluated: a supporting sentence in
+  the last-extracted page reaches its field. CMD: time one build against the harness mock
+  (<10 s).
 - **Edges:** zero URLs found; one URL; research refused but searches succeed (`ready`);
   research times out (charged 25); two builds of different dossiers run at once with
   independent budgets.
@@ -285,10 +317,10 @@ split between writers without collisions. Build order is U1 -> U11.
   `app/store.py` gets `to_json()` and `from_json()` with full validation (D24). The
   serialised state holds users (id, email, display_name, salt, hash), token hashes ->
   user_id, and dossiers (id, domain, committed outcome, fields, researched_at string,
-  spent_units). The committed snapshot is used, so a running build is excluded (D25). It also
+  spent_units). Import also applies D30 (ids of 1-64 characters, unique). The committed snapshot is used, so a running build is excluded (D25). It also
   holds idempotency records. Import validates, then replaces the store in one critical
   section and bumps the generation. The clock is untouched.
-- **Rows:** R161-R175, R177-R179.
+- **Rows:** R45, R161-R175, R177-R179.
 - **Proof:** UT `test_export_import.py` covering: round trip equality; login and the old
   token work after import; a replay after import returns the original body; importing twice
   equals importing once; an export during a build shows the pre-build state (`failed` and
@@ -308,13 +340,14 @@ split between writers without collisions. Build order is U1 -> U11.
 
 ## Row coverage
 
-Every row R1-R215 appears in at least one work item above or is a pure permission (R21) or
+Every row R1-R219 appears in at least one work item above or is a pure permission (R21) or
 process rule (R214 applies to all items, R215 to U1). Rows not exercised by supplied checks
 are listed with their proofs in the matrix "Verified by" column.
 
 ## What the verifier should look at first (rows no supplied check exercises)
 
-R3/R159 (cap), R31 (reset during a build), R62-R65 (exactly one domain query), R69-R71
+R1/R61/R62 (support, provenance and coverage; the supplied checks are only partial here),
+R3/R159 (cap), R31 (reset during a build), R213 (research only when a field is unknown), R62-R65 (exactly one domain query), R69-R71
 (unsupported research claims, conflicts), R104-R119 (idempotency beyond the simple replay),
 R123/R134/R144 (one build at a time), R141 (spent units match the mock `/calls` log),
 R163-R178 (export/import), and A.1/A.4 edge cases (R182-R212).
