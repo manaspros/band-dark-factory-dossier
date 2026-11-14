@@ -104,8 +104,9 @@ its proof, and the edges it must hold.
   - `stamp_learned_at(dossier_builds, new_cands, build_time)`;
   - `selected_learned_at(prev_field, new_field, build_time)`;
   - `entries_for_build(prev_fields, new_fields, is_first_ready, build_time) ->
-    (history_entries, feed_entries)`, with typing per T26-T30 and per title for executives
-    (T23).
+    (history_entries, feed_entries)`, with typing per T26-T30. Executives gets one entry for
+    the whole field, typed by the per-title rule (T23, E3-7); `from`/`to`/`value` are member
+    arrays, and it is placed after the six fields.
 - **Rows:** T5, T6, T20, T23, T25-T30, T47, T49, T51, T65.
 - **Proof:** UT `test_history.py`:
   - initial;
@@ -117,7 +118,9 @@ its proof, and the edges it must hold.
   - a null `true_from` (change);
   - the same value with different citations (nothing);
   - failed (nothing);
-  - the executives typing matrix.
+  - the executives typing matrix;
+  - cfo and cto changing in one build give exactly one `executives` history entry and one
+    feed entry, last in seq order for that build (E3-7).
 
   UT `test_times.py`: candidate `learned_at` across builds.
 - **Files:** `stage-3/app/history.py`, tests.

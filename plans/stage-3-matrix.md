@@ -50,7 +50,7 @@ Codes:
 | T20 | "A candidate's `learned_at` is the time of the first build that gathered a candidate with the same title, name, URL and provider." | Same as T5, with the title in the key. | UT | W3 |
 | T21 | "A member's `true_from` is that of its title's selected candidate. The field's `true_from` is the latest of its members' `true_from`, or null when any member's is null." | | UT | W2 |
 | T22 | "`GET /dossiers/{domain}/values` chooses each title's person from the candidates at `true_at` and gives the value, `true_from` and citations from them by these rules." | | UT | W7 |
-| T23 | "A title **differs** between the earlier and the new value when exactly one of them has a member with that title, or both have one and their names differ. A differing title counts as a correction when both values have a member with that title, both members' `true_from` are not null, and the new member's is on or before the earlier member's. The entry is `correction` when every differing title counts as a correction, and `change` otherwise." | | UT `test_history.py::executives_typing` (all six combinations) | W3 |
+| T23 | "A title **differs** between the earlier and the new value when exactly one of them has a member with that title, or both have one and their names differ. A differing title counts as a correction when both values have a member with that title, both members' `true_from` are not null, and the new member's is on or before the earlier member's. The entry is `correction` when every differing title counts as a correction, and `change` otherwise." | | **Shape (E3-7):** a build that changes `executives` adds **one** history entry and **one** feed entry for the field `executives`. Its `value`, `from` and `to` are the whole member arrays, and its type comes from this per-title rule. There is no per-title entry and no `title` key: the source says "The entry is `correction` when every differing title ..." (one entry), and the per-title detail is visible inside the arrays. | UT `test_history.py::executives_typing` (all six combinations); UT `::executives_one_entry` (cfo and cto change in one build give one history entry and one feed entry, `field: "executives"`, arrays in `from`/`to`) | W3 |
 | T24 | "The `data-testid` attributes of the screens in `stage-2.md` name only the six fields of §4: `executives` takes none of them, and a screen that shows it does so with other markup. On `/contested`, "no field is contested" means none of those six fields is." | The UI loops over the six fields for testids. Executives is shown in its own section (`data-section="executives"`, no testid). Contested lists only the six. | E2E (stage-2 screen tests still pass; contested excludes executives) | W9 `ui/` |
 
 ## Changes and corrections
@@ -94,11 +94,11 @@ Codes:
 | ID | Quote | Meaning / decision | Verified by | Where |
 |---|---|---|---|---|
 | T46 | History shape: `{domain, fields: {<seven>: [entry...]}}`; "Each list is in the order the entries were added, oldest first." | | UT | W4 |
-| T47 | "An entry's `value`, `true_from`, `learned_at` and `citations` are those of the selected value it records. An entry whose value is null has `"true_from": null` and `"citations": []`." | Entries hold `type, value, true_from, learned_at, citations`. | UT | W3 |
+| T47 | "An entry's `value`, `true_from`, `learned_at` and `citations` are those of the selected value it records. An entry whose value is null has `"true_from": null` and `"citations": []`." | Entries hold `type, value, true_from, learned_at, citations`. For `executives`, `value` is the member array, `true_from` is the field's (latest member's, or null), and `citations` are the field's citations (T18, T21). | UT | W3 |
 | T48 | "No dossier for the domain is 404 `not_found`." (history) | An invalid path domain gives 422 first, as before. | UT | W4 |
 | T49 | "The feed holds every `change` and `correction` entry of every dossier." | | UT | W3 |
-| T50 | "`seq` is a positive integer, unique across the feed, and larger for every later entry. Entries added by one build are numbered in the order of the fields in `stage-1.md` §4, then `executives`." | A persisted counter in the `meta` table, incremented inside the commit transaction. | UT; RST (seq after restart > max before) | W5, W10 |
-| T51 | "`from` and `to` are the earlier and the new selected value, either of which may be null. `true_from` is the new value's. `learned_at` is the time of the build that added the entry." | Entry shape `{seq, domain, field, type, from, to, true_from, learned_at}`. | UT | W3 |
+| T50 | "`seq` is a positive integer, unique across the feed, and larger for every later entry. Entries added by one build are numbered in the order of the fields in `stage-1.md` §4, then `executives`." | A persisted counter in the `meta` table, incremented inside the commit transaction. Within one build: `legal_name`, `hq_city`, `ceo`, `founded_year`, `headcount_range`, `funding_total`, then the single `executives` entry (E3-7), so there is no title ordering to define. | UT; RST (seq after restart > max before) | W5, W10 |
+| T51 | "`from` and `to` are the earlier and the new selected value, either of which may be null. `true_from` is the new value's. `learned_at` is the time of the build that added the entry." | Entry shape `{seq, domain, field, type, from, to, true_from, learned_at}`, the same for `executives` (arrays or null in `from`/`to`). |  UT | W3 |
 | T52 | "`since` defaults to 0 ... It is an integer, 0 or more. Entries are ordered by `seq` ascending." | Digits only (stage-1 R87 style). | UT | W4 |
 | T53 | "`limit` defaults to 50, range 1 to 200. `has_more` is true when entries exist beyond the last one returned." | | UT | W4 |
 | T54 | Authentication of the new endpoints | `/history`, `/values` and `/changes` require a bearer token, like every non-exempt endpoint (stage-1 R99). | UT 401 | W4 |
@@ -177,6 +177,11 @@ Codes:
   - A build running at the stop is dropped on restart, and the dossier keeps its last
     completed state.
   - No new dependency.
+- **E3-7** (from the audit) Executives history and feed entries are per field, not per title.
+  The stage-3 text types "a history and feed entry for `executives`" by title and decides "the
+  entry" from every differing title, so a build adds at most one `executives` entry. Its
+  `value`/`from`/`to` are the member arrays, ordered `cfo`, `coo`, `cto` (T13). It comes after
+  the six fields in seq order. No `title` key is added, since the spec's entry shapes have none.
 - **E3-1** A failed build stores its time, outcome and spend but no versions or candidates. It
   is never an `as_of` snapshot.
 - **E3-2** Validation order on the new endpoints, applied in sequence:
