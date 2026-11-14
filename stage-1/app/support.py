@@ -334,17 +334,18 @@ def _capitalised_run(text: str, words: dict[int, int], start: int, joiners: str)
 
 
 def _hq_cities(text: str, folded: str) -> set:
+    """Place names directly after an hq_city phrase and one space.
+
+    The phrase itself is never part of the place name, whatever its case: in
+    `Headquartered In Lisbon` the place name is `Lisbon` (lead ruling on R192/R201).
+    """
     values = set()
     words = {s.start: s.end for s in _capitalised_words(text)}
-    word_ends = {e for e in words.values()}
     for phrase in STATEMENT_PHRASES["hq_city"]:
         for _, end in _find_phrase(folded, phrase):
             start = end + 1
-            if not text.startswith(" ", end) or start not in words:
-                continue
-            if end in word_ends:  # the phrase ends in a capitalised word: a longer run
-                continue
-            values.add(text[start:_capitalised_run(text, words, start, " -")])
+            if text.startswith(" ", end) and start in words:
+                values.add(text[start:_capitalised_run(text, words, start, " -")])
     return values
 
 

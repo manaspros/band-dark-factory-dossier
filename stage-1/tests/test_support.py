@@ -133,3 +133,63 @@ def test_domain_names_company_and_name():
     assert company_name(D) == "acme robotics"
     assert supports("ACME-ROBOTICS.TEST was founded in 2014.", "founded_year", D) == 2014
     assert collapse("  a \n b ") == "a b"
+
+
+# ---------------------------------------------------------------- phrase case (A.2, A.3)
+
+def _cases(phrase):
+    """The phrase as written, in upper case and in title case."""
+    return {phrase, phrase.upper(), phrase.title()}
+
+
+@pytest.mark.parametrize("phrase", [p for base in (
+    "headquartered in", "headquarters in", "head office in", "based in",
+    "registered office in", "registered seat in") for p in _cases(base)])
+def test_hq_city_phrase_in_any_case(phrase):
+    assert supports(f"Acme Robotics is {phrase} Lisbon, Portugal.", "hq_city", D) == "Lisbon"
+    assert supports(f"Acme Robotics is {phrase} São Paulo now.", "hq_city", D) == "São Paulo"
+
+
+@pytest.mark.parametrize("phrase", [p for base in (
+    "chief executive officer", "chief executive", "CEO") for p in _cases(base)])
+def test_ceo_phrase_in_any_case(phrase):
+    assert supports(f"{phrase} Dana Ruiz leads Acme Robotics.", "ceo", D) == "Dana Ruiz"
+    assert supports(f"Acme Robotics {phrase} Dana Ruiz spoke.", "ceo", D) == "Dana Ruiz"
+
+
+@pytest.mark.parametrize("phrase", [p for base in (
+    "legal name", "registered name", "registered as", "registered company", "legal entity",
+    "name of record") for p in _cases(base)])
+def test_legal_name_phrase_in_any_case(phrase):
+    assert supports(f"The {phrase} is Acme Robotics Holdings Ltd today.", "legal_name",
+                    D) == "Acme Robotics Holdings Ltd"
+    assert supports(f"ACME ROBOTICS: {phrase} Acme Robotics, Inc. in Delaware.", "legal_name",
+                    D) == "Acme Robotics, Inc."
+
+
+@pytest.mark.parametrize("field, sentence, value", [
+    *[("founded_year", f"Acme Robotics was {p} in 2014.", 2014)
+      for base in ("founded", "founding", "established", "incorporated") for p in _cases(base)],
+    *[("headcount_range", f"Acme Robotics {p} 120 here.", "51-200")
+      for base in ("employs", "employees", "staff", "people", "headcount", "workforce")
+      for p in _cases(base)],
+    *[("funding_total", f"Acme Robotics {p} $12M.", 12000000)
+      for base in ("raised", "funding", "invested", "investment") for p in _cases(base)],
+])
+def test_other_phrases_in_any_case(field, sentence, value):
+    assert supports(sentence, field, D) == value
+
+
+@pytest.mark.parametrize("negation", [p for base in (
+    "in talks to", "plans to", "planning to", "wants to", "expects to", "hopes to", "aims to",
+    "seeking", "could", "would", "might", "reportedly", "rumoured", "former", "formerly",
+    "will become", "not") for p in _cases(base)])
+def test_negating_phrase_in_any_case(negation):
+    assert supports(f"Acme Robotics {negation} founded in 2014.", "founded_year", D) is None
+
+
+def test_company_name_in_any_case_for_legal_name():
+    assert supports("The legal name is ACME ROBOTICS Ltd now.", "legal_name",
+                    D) == "ACME ROBOTICS Ltd"
+    assert supports("The legal name is acme robotics GmbH now.", "legal_name",
+                    D) == "acme robotics GmbH"
