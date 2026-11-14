@@ -18,9 +18,11 @@ PAGES = {
 
 
 class FakeWeb:
-    def __init__(self, pages=None, refuse=None, delay=0.0, claims=None, lost=None, hidden=()):
+    def __init__(self, pages=None, refuse=None, delay=0.0, claims=None, lost=None, hidden=(),
+                 poll_rate_limits=0):
         self.pages = dict(PAGES if pages is None else pages)
         self.hidden = set(hidden)          # pages no search returns (research may cite them)
+        self.poll_rate_limits = poll_rate_limits   # research polls answered 429 first
         self.refuse = refuse or (lambda method, arg, attempt: False)
         self.lost = lost or (lambda method, arg: False)
         self.delay = delay
@@ -62,6 +64,8 @@ class FakeWeb:
 
     async def poll_research(self, job):
         self.calls.append(("poll", job))
+        if self.count("poll") <= self.poll_rate_limits:
+            return CallOutcome(ok=False, charged=False, refused=True, rate_limited=True)
         if self.delay:
             await asyncio.sleep(2 * self.delay)  # a status check, then the result fetch
         return CallOutcome(ok=True, charged=False, done=True,

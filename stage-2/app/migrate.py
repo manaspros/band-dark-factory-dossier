@@ -8,41 +8,68 @@ excerpt and provider as exported, a null kind and publication time, and the doss
 researched_at as its retrieval time (lead ruling DEV-S1). Values stage 1 saw but did not
 select were never exported and cannot be recovered.
 
-A stage-2 export carries its candidates; their field is decided again by the selection
-rule, which gives back the exported field.
+A stage-2 export carries its candidates; each must hold a value §4 allows for its field,
+and the field must be exactly what the selection rule makes of them. Anything else is an
+invalid state (422, nothing changed).
 """
 from __future__ import annotations
 
+from app.clock import parse_rfc3339
+from app.errors import ApiError
 from app.pages import KINDS
-from app.selection import Candidate, decide_field
+from app.selection import PROVIDER_ORDER, Candidate, decide_field
+from app.support import HEADCOUNT_RANGES, MAX_EXCERPT_CHARS
 
 STAGE1_KEYS = {"value", "status", "citations"}
 STAGE2_KEYS = STAGE1_KEYS | {"candidates"}
 CANDIDATE_KEYS = {"value", "url", "excerpt", "provider", "kind", "published_at",
                   "retrieved_at", "selected"}
-INTEGER_FIELDS = ("founded_year", "funding_total")
+HEADCOUNT_LABELS = {label for _, _, label in HEADCOUNT_RANGES}
 
 
 def _is_str(value) -> bool:
     return isinstance(value, str)
 
 
-def _typed(field: str, value) -> bool:
-    if field in INTEGER_FIELDS:
-        return isinstance(value, int) and not isinstance(value, bool)
-    return isinstance(value, str)
+def _is_int(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def in_field_format(field: str, value) -> bool:
+    """Whether ``value`` is a value §4 allows for ``field``."""
+    if field == "founded_year":
+        return _is_int(value) and 1800 <= value <= 2099
+    if field == "funding_total":
+        return _is_int(value) and value >= 0
+    if field == "headcount_range":
+        return value in HEADCOUNT_LABELS
+    return _is_str(value) and value != "" and value == value.strip()
+
+
+def _is_time(value) -> bool:
+    if value is None:
+        return True
+    try:
+        parse_rfc3339(value)
+    except ApiError:
+        return False
+    return True
+
+
+def _valid_source(c) -> bool:
+    """url, excerpt (1 to 500 characters) and a known provider."""
+    return (_is_str(c.get("url")) and _is_str(c.get("excerpt"))
+            and 1 <= len(c["excerpt"]) <= MAX_EXCERPT_CHARS and c.get("provider") in PROVIDER_ORDER)
 
 
 def _valid_citation(c) -> bool:
-    return isinstance(c, dict) and set(c) == {"url", "excerpt", "provider"} and all(
-        _is_str(c[k]) for k in c)
+    return isinstance(c, dict) and set(c) == {"url", "excerpt", "provider"} and _valid_source(c)
 
 
 def _valid_candidate(field: str, c) -> bool:
-    return (isinstance(c, dict) and set(c) == CANDIDATE_KEYS and _typed(field, c["value"])
-            and all(_is_str(c[k]) for k in ("url", "excerpt", "provider"))
-            and (c["kind"] is None or c["kind"] in KINDS)
-            and all(c[k] is None or _is_str(c[k]) for k in ("published_at", "retrieved_at"))
+    return (isinstance(c, dict) and set(c) == CANDIDATE_KEYS and in_field_format(field, c["value"])
+            and _valid_source(c) and (c["kind"] is None or c["kind"] in KINDS)
+            and _is_time(c["published_at"]) and _is_time(c["retrieved_at"])
             and isinstance(c["selected"], bool))
 
 
@@ -55,17 +82,21 @@ def valid_field(field: str, value) -> bool:
         return False
     if "candidates" in value:
         candidates = value["candidates"]
-        return isinstance(candidates, list) and all(
-            _valid_candidate(field, c) for c in candidates)
+        if not isinstance(candidates, list) or not all(
+                _valid_candidate(field, c) for c in candidates):
+            return False
+        # The field must be exactly what the selection rule makes of its candidates.
+        return decide_field([Candidate.from_json(field, c) for c in candidates]) == value
     if value["value"] is None:
         return value["status"] == "unknown" and citations == []
-    return _typed(field, value["value"]) and value["status"] == "known" and len(citations) >= 1
+    return (in_field_format(field, value["value"]) and value["status"] == "known"
+            and len(citations) >= 1)
 
 
 def import_field(field: str, value: dict, researched_at: str | None) -> dict:
     """The stage-2 field for a validated exported field of either shape."""
     if "candidates" in value:
-        return decide_field([Candidate.from_json(field, c) for c in value["candidates"]])
+        return value  # valid_field has checked it equals the selection rule's result
     if value["value"] is None:
         return decide_field([])
     first_per_page: dict[str, dict] = {}

@@ -124,11 +124,17 @@ class WebClient:
         return CallOutcome(ok=True, charged=True, job=job)
 
     async def poll_research(self, job) -> CallOutcome:
-        """One status check of a research run (free). ``done`` once it has finished."""
+        """One status check of a research run (free). ``done`` once it has finished.
+
+        A failed poll is retried by the caller; a 429 is flagged so that the retry waits
+        past the provider's one-second repeat window.
+        """
         try:
             progress = await job.astatus()
-        except Exception:  # noqa: BLE001 - a failed poll is retried by the caller
-            return CallOutcome(ok=False, charged=False)
+        except Exception as exc:  # noqa: BLE001
+            refusal = classify_failure(exc, "research")
+            return CallOutcome(ok=False, charged=False, refused=refusal.refused,
+                               rate_limited=refusal.rate_limited)
         if not progress.is_terminal:
             return CallOutcome(ok=True, charged=False)
         if progress.response is None:

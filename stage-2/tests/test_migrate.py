@@ -103,3 +103,36 @@ def test_invalid_stage1_state_changes_nothing(client):
     bad["state"]["dossiers"][0]["fields"]["ceo"]["candidates"] = [{"value": "x"}]
     assert client.post("/_test/import", json=bad).status_code == 422
     assert client.get("/_test/export").json() == before
+
+
+@pytest.mark.parametrize("field, bad", [
+    ("headcount_range", "banana"), ("headcount_range", "51-199"), ("founded_year", 1700),
+    ("founded_year", 2014.0), ("funding_total", -5), ("ceo", "  "), ("legal_name", ""),
+])
+def test_stage2_values_outside_the_field_format_are_422(client, field, bad):
+    exported = client.get("/_test/export").json()
+    dossier = next(d for d in exported["state"]["dossiers"] if d["fields"][field]["candidates"])
+    broken = json.loads(json.dumps(exported))
+    target = next(d for d in broken["state"]["dossiers"] if d["dossier_id"] == dossier["dossier_id"])
+    target["fields"][field]["value"] = bad
+    for candidate in target["fields"][field]["candidates"]:
+        candidate["value"] = bad
+    assert client.post("/_test/import", json=broken).status_code == 422
+    assert client.get("/_test/export").json() == exported
+
+
+def test_stage2_field_inconsistent_with_its_candidates_is_422(client):
+    exported = client.get("/_test/export").json()
+    broken = json.loads(json.dumps(exported))
+    field = next(f for d in broken["state"]["dossiers"] for f in d["fields"].values()
+                 if f["candidates"])
+    field["status"] = "contested"
+    assert client.post("/_test/import", json=broken).status_code == 422
+
+
+def test_stage1_values_outside_the_field_format_are_422(client):
+    before = client.get("/_test/export").json()
+    bad = json.loads(json.dumps(EXPORT))
+    bad["state"]["dossiers"][0]["fields"]["headcount_range"]["value"] = "banana"
+    assert client.post("/_test/import", json=bad).status_code == 422
+    assert client.get("/_test/export").json() == before

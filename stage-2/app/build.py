@@ -192,7 +192,10 @@ class Build:
             if polled.done:
                 urls = [claim.url for claim in polled.claims if claim.field in FIELDS]
                 return list(dict.fromkeys(urls))
-            await asyncio.sleep(POLL_SECONDS_FAST if self.fast else POLL_SECONDS_SLOW)
+            if polled.rate_limited:   # polls are free; wait past the 429 window, off the clock
+                await self._wait_after_rate_limit()
+            else:
+                await asyncio.sleep(POLL_SECONDS_FAST if self.fast else POLL_SECONDS_SLOW)
         return []
 
     async def render_all(self, urls: list[str]) -> None:

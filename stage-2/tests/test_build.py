@@ -176,3 +176,13 @@ def test_budget_reservation():
     assert b.reserve(8) and not b.reserve(3)
     b.settle(8, charged=False)
     assert b.reserve(10) and b.remaining == 0
+
+
+def test_rate_limited_research_polls_wait_past_the_window_and_are_not_build_time():
+    web = FakeWeb(poll_rate_limits=3)
+    build = Build(DOMAIN, web)
+    fields = run(build)
+    assert web.count("poll") == 4
+    assert build.elapsed() > 3 * 1.05
+    assert build.effective_elapsed() < 1.0
+    assert fields["ceo"]["value"] == "Dana Ruiz"
