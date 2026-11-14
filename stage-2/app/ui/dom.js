@@ -43,5 +43,6 @@ const BANNER_ICONS = { loading: "…", success: "✓", error: "✕", uncertain: 
 export function banner(kind, attrs, ...children) {
   return h("div", { class: `banner banner--${kind}`,
                     role: kind === "error" ? "alert" : "status", ...attrs },
-    h("span", { class: "icon", "aria-hidden": "true" }, BANNER_ICONS[kind]), ...children);
+    h("span", { class: "icon", "aria-hidden": "true" }, BANNER_ICONS[kind]),
+    h("span", { class: "banner__body" }, ...children));
 }

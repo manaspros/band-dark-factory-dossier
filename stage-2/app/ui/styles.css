@@ -117,7 +117,10 @@ input[type="text"], input[type="email"], input[type="password"], input[type="sea
 .banner--error { background: var(--failed-bg); color: var(--failed-ink); }
 .banner--uncertain { background: var(--uncertain-bg); color: var(--uncertain-ink); }
 .banner--info { background: var(--unknown-bg); color: var(--unknown-ink); }
-.banner .button { margin-left: auto; }
+.banner { flex-wrap: nowrap; }
+.banner__body { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.banner__body .button { display: flex; margin-top: var(--space-2); }
+.candidate blockquote { margin: 0; font-style: italic; }
 
 /* ---- dossier --------------------------------------------------------------------- */
 .dossier-head { display: grid; gap: var(--space-3); }
