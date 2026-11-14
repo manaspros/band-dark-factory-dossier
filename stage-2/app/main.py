@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.routing import Route
 
-from app import auth, control, dossiers
+from app import auth, control, dossiers, ui_routes
 from app.build import Builds
 from app.clock import Clock
 from app.errors import ApiError
@@ -35,6 +35,15 @@ class Services:
 def _endpoint(services: Services, handler):
     async def endpoint(request: Request):
         return await handler(services, request)
+    return endpoint
+
+
+def _dossier_or_shell(services: Services):
+    """`GET /dossiers/{domain}` is the dossier screen for browsers, the API otherwise."""
+    async def endpoint(request: Request):
+        if ui_routes.wants_html(request):
+            return await ui_routes.shell(request)
+        return await dossiers.read(services, request)
     return endpoint
 
 
@@ -77,7 +86,14 @@ def create_app(services: Services | None = None, web_factory=WebClient) -> Starl
         Route("/dossiers", _endpoint(s, dossiers.create), methods=["POST"]),
         Route("/dossiers", _endpoint(s, dossiers.list_), methods=["GET"]),
         Route("/dossiers/{domain:path}/refresh", _endpoint(s, dossiers.refresh), methods=["POST"]),
-        Route("/dossiers/{domain:path}", _endpoint(s, dossiers.read), methods=["GET"]),
+        # Browser screens (static shell); the evidence route must precede the shared one.
+        Route("/", ui_routes.shell, methods=["GET"]),
+        Route("/signup", ui_routes.shell, methods=["GET"]),
+        Route("/login", ui_routes.shell, methods=["GET"]),
+        Route("/contested", ui_routes.shell, methods=["GET"]),
+        Route("/dossiers/{domain:path}/evidence", ui_routes.shell, methods=["GET"]),
+        Route("/dossiers/{domain:path}", _dossier_or_shell(s), methods=["GET"]),
+        Route("/static/{path:path}", ui_routes.static, methods=["GET"]),
     ]
     app = Starlette(routes=routes, exception_handlers={
         ApiError: _api_error, HTTPException: _http_error, Exception: _unexpected})
