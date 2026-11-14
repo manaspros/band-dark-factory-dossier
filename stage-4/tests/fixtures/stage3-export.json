@@ -1,0 +1,602 @@
+{
+ "token": "ASy4vzc89r9pM0AwkYjeboWecqxO69LUIoN0BF4Mp3s",
+ "export": {
+  "track": "dossier",
+  "format_version": 1,
+  "state": {
+   "users": [
+    {
+     "id": "u_ada",
+     "email": "ada@example.com",
+     "display_name": "Ada",
+     "password_hash": "scrypt$3e29e48ef115aa7da6ea13ce3f5cf798$ea1d476bffeb2e97c8bf76dab5981e8ddb8f6f8e2a7a5f8b4f3db16960bb9ba1"
+    }
+   ],
+   "tokens": [
+    {
+     "token_sha256": "38440097e6654c0f545e6690102f5edf54677229f82acad9e0c791db15b2d628",
+     "user_id": "u_ada"
+    }
+   ],
+   "dossiers": [
+    {
+     "dossier_id": "d_df78a047e8acd5e8",
+     "domain": "acme-robotics.test",
+     "state": "ready",
+     "fields": {
+      "legal_name": {
+       "value": null,
+       "status": "unknown",
+       "true_from": null,
+       "learned_at": null,
+       "citations": [],
+       "candidates": []
+      },
+      "hq_city": {
+       "value": null,
+       "status": "unknown",
+       "true_from": null,
+       "learned_at": null,
+       "citations": [],
+       "candidates": []
+      },
+      "ceo": {
+       "value": "Lee Park",
+       "status": "known",
+       "true_from": "2026-03-20",
+       "learned_at": "2026-04-01T09:00:00+00:00",
+       "citations": [
+        {
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Lee Park is the chief executive officer of Acme Robotics.",
+         "provider": "nimble"
+        }
+       ],
+       "candidates": [
+        {
+         "value": "Lee Park",
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Lee Park is the chief executive officer of Acme Robotics.",
+         "provider": "nimble",
+         "kind": "own",
+         "published_at": null,
+         "retrieved_at": "2026-04-01T09:00:00+00:00",
+         "true_from": "2026-03-20",
+         "learned_at": "2026-04-01T09:00:00+00:00",
+         "selected": true
+        }
+       ]
+      },
+      "founded_year": {
+       "value": 2014,
+       "status": "known",
+       "true_from": "2026-03-20",
+       "learned_at": "2026-03-01T09:00:00+00:00",
+       "citations": [
+        {
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Acme Robotics was founded in 2014.",
+         "provider": "nimble"
+        },
+        {
+         "url": "https://bizdata.test/acme",
+         "excerpt": "Acme Robotics was founded in 2014.",
+         "provider": "nimble"
+        }
+       ],
+       "candidates": [
+        {
+         "value": 2014,
+         "url": "https://acme-robotics.test/about",
+         "excerpt": "Acme Robotics was founded in 2014.",
+         "provider": "nimble",
+         "kind": "own",
+         "published_at": null,
+         "retrieved_at": "2026-04-01T09:00:00+00:00",
+         "true_from": "2026-03-20",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "selected": true
+        },
+        {
+         "value": 2014,
+         "url": "https://bizdata.test/acme",
+         "excerpt": "Acme Robotics was founded in 2014.",
+         "provider": "nimble",
+         "kind": "aggregator",
+         "published_at": "2025-03-01T00:00:00+00:00",
+         "retrieved_at": "2026-04-01T09:00:00+00:00",
+         "true_from": "2025-03-01",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "selected": false
+        }
+       ]
+      },
+      "headcount_range": {
+       "value": null,
+       "status": "unknown",
+       "true_from": null,
+       "learned_at": null,
+       "citations": [],
+       "candidates": []
+      },
+      "funding_total": {
+       "value": null,
+       "status": "unknown",
+       "true_from": null,
+       "learned_at": null,
+       "citations": [],
+       "candidates": []
+      },
+      "executives": {
+       "value": [
+        {
+         "title": "cfo",
+         "name": "Ana Silva"
+        }
+       ],
+       "status": "known",
+       "true_from": "2025-09-01",
+       "learned_at": "2026-03-01T09:00:00+00:00",
+       "citations": [
+        {
+         "url": "https://acme-robotics.test/team",
+         "excerpt": "Ana Silva is the chief financial officer of Acme Robotics.",
+         "provider": "nimble"
+        }
+       ],
+       "candidates": [
+        {
+         "title": "cfo",
+         "value": "Ana Silva",
+         "url": "https://acme-robotics.test/team",
+         "excerpt": "Ana Silva is the chief financial officer of Acme Robotics.",
+         "provider": "nimble",
+         "kind": "own",
+         "published_at": null,
+         "retrieved_at": "2026-04-01T09:00:00+00:00",
+         "true_from": "2025-09-01",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "selected": true
+        }
+       ]
+      }
+     },
+     "researched_at": "2026-04-01T09:00:00+00:00",
+     "spent_units": 86,
+     "builds": [
+      {
+       "number": 1,
+       "time": "2026-03-01T09:00:00+00:00",
+       "outcome": "ready",
+       "spent_units": 43,
+       "fields": {
+        "legal_name": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "hq_city": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "ceo": {
+         "value": "Dana Ruiz",
+         "status": "known",
+         "true_from": "2021-04-01",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "citations": [
+          {
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Dana Ruiz is the chief executive officer of Acme Robotics.",
+           "provider": "nimble"
+          }
+         ],
+         "candidates": [
+          {
+           "value": "Dana Ruiz",
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Dana Ruiz is the chief executive officer of Acme Robotics.",
+           "provider": "nimble",
+           "kind": "own",
+           "published_at": null,
+           "retrieved_at": "2026-03-01T09:00:00+00:00",
+           "true_from": "2021-04-01",
+           "learned_at": "2026-03-01T09:00:00+00:00",
+           "selected": true
+          }
+         ]
+        },
+        "founded_year": {
+         "value": 2014,
+         "status": "known",
+         "true_from": "2021-04-01",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "citations": [
+          {
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble"
+          },
+          {
+           "url": "https://bizdata.test/acme",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble"
+          }
+         ],
+         "candidates": [
+          {
+           "value": 2014,
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble",
+           "kind": "own",
+           "published_at": null,
+           "retrieved_at": "2026-03-01T09:00:00+00:00",
+           "true_from": "2021-04-01",
+           "learned_at": "2026-03-01T09:00:00+00:00",
+           "selected": true
+          },
+          {
+           "value": 2014,
+           "url": "https://bizdata.test/acme",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble",
+           "kind": "aggregator",
+           "published_at": "2025-03-01T00:00:00+00:00",
+           "retrieved_at": "2026-03-01T09:00:00+00:00",
+           "true_from": "2025-03-01",
+           "learned_at": "2026-03-01T09:00:00+00:00",
+           "selected": false
+          }
+         ]
+        },
+        "headcount_range": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "funding_total": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "executives": {
+         "value": [
+          {
+           "title": "cfo",
+           "name": "Ana Silva"
+          }
+         ],
+         "status": "known",
+         "true_from": "2025-09-01",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "citations": [
+          {
+           "url": "https://acme-robotics.test/team",
+           "excerpt": "Ana Silva is the chief financial officer of Acme Robotics.",
+           "provider": "nimble"
+          }
+         ],
+         "candidates": [
+          {
+           "title": "cfo",
+           "value": "Ana Silva",
+           "url": "https://acme-robotics.test/team",
+           "excerpt": "Ana Silva is the chief financial officer of Acme Robotics.",
+           "provider": "nimble",
+           "kind": "own",
+           "published_at": null,
+           "retrieved_at": "2026-03-01T09:00:00+00:00",
+           "true_from": "2025-09-01",
+           "learned_at": "2026-03-01T09:00:00+00:00",
+           "selected": true
+          }
+         ]
+        }
+       },
+       "pages": [
+        {
+         "url": "https://acme-robotics.test/about",
+         "true_from": "2021-04-01"
+        },
+        {
+         "url": "https://acme-robotics.test/team",
+         "true_from": "2025-09-01"
+        },
+        {
+         "url": "https://bizdata.test/acme",
+         "true_from": "2025-03-01"
+        }
+       ]
+      },
+      {
+       "number": 2,
+       "time": "2026-04-01T09:00:00+00:00",
+       "outcome": "ready",
+       "spent_units": 43,
+       "fields": {
+        "legal_name": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "hq_city": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "ceo": {
+         "value": "Lee Park",
+         "status": "known",
+         "true_from": "2026-03-20",
+         "learned_at": "2026-04-01T09:00:00+00:00",
+         "citations": [
+          {
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Lee Park is the chief executive officer of Acme Robotics.",
+           "provider": "nimble"
+          }
+         ],
+         "candidates": [
+          {
+           "value": "Lee Park",
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Lee Park is the chief executive officer of Acme Robotics.",
+           "provider": "nimble",
+           "kind": "own",
+           "published_at": null,
+           "retrieved_at": "2026-04-01T09:00:00+00:00",
+           "true_from": "2026-03-20",
+           "learned_at": "2026-04-01T09:00:00+00:00",
+           "selected": true
+          }
+         ]
+        },
+        "founded_year": {
+         "value": 2014,
+         "status": "known",
+         "true_from": "2026-03-20",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "citations": [
+          {
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble"
+          },
+          {
+           "url": "https://bizdata.test/acme",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble"
+          }
+         ],
+         "candidates": [
+          {
+           "value": 2014,
+           "url": "https://acme-robotics.test/about",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble",
+           "kind": "own",
+           "published_at": null,
+           "retrieved_at": "2026-04-01T09:00:00+00:00",
+           "true_from": "2026-03-20",
+           "learned_at": "2026-03-01T09:00:00+00:00",
+           "selected": true
+          },
+          {
+           "value": 2014,
+           "url": "https://bizdata.test/acme",
+           "excerpt": "Acme Robotics was founded in 2014.",
+           "provider": "nimble",
+           "kind": "aggregator",
+           "published_at": "2025-03-01T00:00:00+00:00",
+           "retrieved_at": "2026-04-01T09:00:00+00:00",
+           "true_from": "2025-03-01",
+           "learned_at": "2026-03-01T09:00:00+00:00",
+           "selected": false
+          }
+         ]
+        },
+        "headcount_range": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "funding_total": {
+         "value": null,
+         "status": "unknown",
+         "true_from": null,
+         "learned_at": null,
+         "citations": [],
+         "candidates": []
+        },
+        "executives": {
+         "value": [
+          {
+           "title": "cfo",
+           "name": "Ana Silva"
+          }
+         ],
+         "status": "known",
+         "true_from": "2025-09-01",
+         "learned_at": "2026-03-01T09:00:00+00:00",
+         "citations": [
+          {
+           "url": "https://acme-robotics.test/team",
+           "excerpt": "Ana Silva is the chief financial officer of Acme Robotics.",
+           "provider": "nimble"
+          }
+         ],
+         "candidates": [
+          {
+           "title": "cfo",
+           "value": "Ana Silva",
+           "url": "https://acme-robotics.test/team",
+           "excerpt": "Ana Silva is the chief financial officer of Acme Robotics.",
+           "provider": "nimble",
+           "kind": "own",
+           "published_at": null,
+           "retrieved_at": "2026-04-01T09:00:00+00:00",
+           "true_from": "2025-09-01",
+           "learned_at": "2026-03-01T09:00:00+00:00",
+           "selected": true
+          }
+         ]
+        }
+       },
+       "pages": [
+        {
+         "url": "https://acme-robotics.test/about",
+         "true_from": "2026-03-20"
+        },
+        {
+         "url": "https://acme-robotics.test/team",
+         "true_from": "2025-09-01"
+        },
+        {
+         "url": "https://bizdata.test/acme",
+         "true_from": "2025-03-01"
+        }
+       ]
+      }
+     ],
+     "history": {
+      "legal_name": [],
+      "hq_city": [],
+      "ceo": [
+       {
+        "type": "initial",
+        "value": "Dana Ruiz",
+        "true_from": "2021-04-01",
+        "learned_at": "2026-03-01T09:00:00+00:00",
+        "citations": [
+         {
+          "url": "https://acme-robotics.test/about",
+          "excerpt": "Dana Ruiz is the chief executive officer of Acme Robotics.",
+          "provider": "nimble"
+         }
+        ]
+       },
+       {
+        "type": "change",
+        "value": "Lee Park",
+        "true_from": "2026-03-20",
+        "learned_at": "2026-04-01T09:00:00+00:00",
+        "citations": [
+         {
+          "url": "https://acme-robotics.test/about",
+          "excerpt": "Lee Park is the chief executive officer of Acme Robotics.",
+          "provider": "nimble"
+         }
+        ]
+       }
+      ],
+      "founded_year": [
+       {
+        "type": "initial",
+        "value": 2014,
+        "true_from": "2021-04-01",
+        "learned_at": "2026-03-01T09:00:00+00:00",
+        "citations": [
+         {
+          "url": "https://acme-robotics.test/about",
+          "excerpt": "Acme Robotics was founded in 2014.",
+          "provider": "nimble"
+         },
+         {
+          "url": "https://bizdata.test/acme",
+          "excerpt": "Acme Robotics was founded in 2014.",
+          "provider": "nimble"
+         }
+        ]
+       }
+      ],
+      "headcount_range": [],
+      "funding_total": [],
+      "executives": [
+       {
+        "type": "initial",
+        "value": [
+         {
+          "title": "cfo",
+          "name": "Ana Silva"
+         }
+        ],
+        "true_from": "2025-09-01",
+        "learned_at": "2026-03-01T09:00:00+00:00",
+        "citations": [
+         {
+          "url": "https://acme-robotics.test/team",
+          "excerpt": "Ana Silva is the chief financial officer of Acme Robotics.",
+          "provider": "nimble"
+         }
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "idempotency": [
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers",
+     "key": "s3-create",
+     "fingerprint": "{\"domain\":\"acme-robotics.test\"}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_df78a047e8acd5e8",
+      "domain": "acme-robotics.test",
+      "state": "building"
+     }
+    },
+    {
+     "user_id": "u_ada",
+     "method": "POST",
+     "path": "/dossiers/acme-robotics.test/refresh",
+     "key": "s3-refresh",
+     "fingerprint": "{}",
+     "status": 202,
+     "body": {
+      "dossier_id": "d_df78a047e8acd5e8",
+      "domain": "acme-robotics.test",
+      "state": "building"
+     }
+    }
+   ],
+   "feed": [
+    {
+     "seq": 1,
+     "domain": "acme-robotics.test",
+     "field": "ceo",
+     "type": "change",
+     "from": "Dana Ruiz",
+     "to": "Lee Park",
+     "true_from": "2026-03-20",
+     "learned_at": "2026-04-01T09:00:00+00:00"
+    }
+   ]
+  }
+ }
+}

@@ -80,11 +80,12 @@ def candidates_at(builds: list[BuildRecord], day: str) -> list[Candidate]:
 
 
 def values(dossier: Dossier, true_at: date, as_of: datetime) -> dict | None:
-    """Each field's value, `true_from` and citations on ``true_at`` by the evidence known at
-    ``as_of``, or None when no build completed ready by then."""
+    """Each field's value, `true_from`, citations, `origins` and `corroborated` on ``true_at``
+    by the evidence known at ``as_of`` (lead ruling D4-5), or None when no build completed
+    ready by then."""
     ready = [b for b in builds_known_at(dossier, as_of) if b.outcome == "ready"]
     if not ready:
         return None
     fields = decide(candidates_at(ready, true_at.isoformat()))
-    return {name: {"value": fields[name]["value"], "true_from": fields[name]["true_from"],
-                   "citations": fields[name]["citations"]} for name in ALL_FIELDS}
+    keys = ("value", "true_from", "citations", "origins", "corroborated")
+    return {name: {key: fields[name][key] for key in keys} for name in ALL_FIELDS}

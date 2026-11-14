@@ -19,10 +19,12 @@ PAGES = {
 
 class FakeWeb:
     def __init__(self, pages=None, refuse=None, delay=0.0, claims=None, lost=None, hidden=(),
-                 poll_rate_limits=0):
+                 poll_rate_limits=0, poll_failures=0, never_done=False):
         self.pages = dict(PAGES if pages is None else pages)
         self.hidden = set(hidden)          # pages no search returns (research may cite them)
         self.poll_rate_limits = poll_rate_limits   # research polls answered 429 first
+        self.poll_failures = poll_failures         # then polls answered 503
+        self.never_done = never_done               # a research run that never finishes
         self.refuse = refuse or (lambda method, arg, attempt: False)
         self.lost = lost or (lambda method, arg: False)
         self.delay = delay
@@ -66,6 +68,10 @@ class FakeWeb:
         self.calls.append(("poll", job))
         if self.count("poll") <= self.poll_rate_limits:
             return CallOutcome(ok=False, charged=False, refused=True, rate_limited=True)
+        if self.count("poll") <= self.poll_rate_limits + self.poll_failures:
+            return CallOutcome(ok=False, charged=False, refused=True)
+        if self.never_done:
+            return CallOutcome(ok=True, charged=False)
         if self.delay:
             await asyncio.sleep(2 * self.delay)  # a status check, then the result fetch
         return CallOutcome(ok=True, charged=False, done=True,

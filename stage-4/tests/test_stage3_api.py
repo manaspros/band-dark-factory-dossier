@@ -198,14 +198,16 @@ def test_values_at_dates(client, web):
                                    "true_from": "2025-09-01", "citations": [
                                        {"url": TEAM, "provider": "nimble", "excerpt":
                                         "Ana Silva is the chief financial officer of "
-                                        "Acme Robotics."}]}
+                                        "Acme Robotics."}],
+                                   "origins": ["acme-robotics.test"], "corroborated": False}
     # with what was known at T2 only, Lee Park held from 2026-03-20
     known_t2 = get(client, h, base + "2026-03-25&as_of=" + T2)[1]
     assert known_t2["fields"]["ceo"]["value"] == "Lee Park" and known_t2["as_of"] == T2
     assert get(client, h, base + "2026-03-10&as_of=" + T2)[1]["fields"]["ceo"]["value"] \
         == "Dana Ruiz"
     empty = get(client, h, base + "2000-01-01")[1]["fields"]["ceo"]
-    assert empty == {"value": None, "true_from": None, "citations": []}
+    assert empty == {"value": None, "true_from": None, "citations": [], "origins": [],
+                     "corroborated": False}
     assert get(client, h, base + "2025-6-1")[0] == 422
     assert get(client, h, f"/dossiers/{DOMAIN}/values")[0] == 422
     assert get(client, h, base + "2025-06-01&as_of=2026-01-01")[0] == 422
@@ -307,7 +309,8 @@ def test_stage1_import_is_one_ready_build_at_researched_at(client, web):
     assert status == 200 and at["fields"] == now["fields"]
     assert get(client, h, f"/dossiers/{domain}?as_of=2000-01-01T00:00:00Z")[0] == 404
     values = get(client, h, f"/dossiers/{domain}/values?true_at=2026-01-01")[1]["fields"]
-    assert all(v == {"value": None, "true_from": None, "citations": []} for v in values.values())
+    assert all(v == {"value": None, "true_from": None, "citations": [], "origins": [],
+                     "corroborated": False} for v in values.values())
     assert get(client, h, "/changes")[1]["changes"] == []
 
 

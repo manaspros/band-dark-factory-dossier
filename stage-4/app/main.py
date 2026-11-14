@@ -11,9 +11,10 @@ from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.routing import Route
 
-from app import auth, control, dossiers, ui_routes
+from app import auth, batches, control, dossiers, ui_routes
 from app.build import Builds
 from app.clock import Clock
+from app.commit import recover_interrupted
 from app.db import Database
 from app.errors import ApiError
 from app.http import error_response, json_response
@@ -36,6 +37,7 @@ class Services:
 
     def __post_init__(self) -> None:
         self.clock.restore(self.store.db.clock())
+        recover_interrupted(self.store)   # before anything is served (stage-4 Restarts)
         self.builds = Builds(self.store)
 
 
@@ -96,6 +98,8 @@ def create_app(services: Services | None = None, web_factory=WebClient) -> Starl
         Route("/dossiers/{domain:path}/history", _endpoint(s, dossiers.history), methods=["GET"]),
         Route("/dossiers/{domain:path}/values", _endpoint(s, dossiers.values), methods=["GET"]),
         Route("/changes", _endpoint(s, dossiers.changes), methods=["GET"]),
+        Route("/batches", _endpoint(s, batches.create), methods=["POST"]),
+        Route("/batches/{batch_id}", _endpoint(s, batches.read), methods=["GET"]),
         # Browser screens (static shell); the evidence route must precede the shared one.
         Route("/", ui_routes.shell, methods=["GET"]),
         Route("/signup", ui_routes.shell, methods=["GET"]),
