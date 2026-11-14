@@ -150,3 +150,34 @@ Checks on the copy:
   - Budget: a shared budget reserved before every call of every build in the batch, beside
     each build's 80-unit cap.
 - **Owner scoping.** Another user's batch gives 404.
+
+## 6. Implementation notes and deviations from the plan (stage-4 implementation)
+
+The plan's work items U1-U11 are implemented, following the lead rulings: a zero-call
+budget-exhausted batch build ends ready; `/values` gains `origins` and `corroborated`; a
+wrong-typed `domains` gives 400 while `budget_units` gives 422; there is no early stop; T38
+is not fixed. The points that differ in detail:
+
+- **Shape detection.** A dossier with `builds` is in stage-3 shape unless its fields hold
+  `investors`, in which case it is stage-4. Stage-3 and earlier dossiers are upgraded at
+  import (`migrate.upgrade_to_stage4`). Every kept build's snapshot gains candidate origins
+  (the URL host), unknown investors and the corroboration keys, walked build by build.
+- **Batch `spent_units`.** While the batch runs in this process it shows the settled charges
+  of its builds. On disk, and after a restart, it is the units its builds had reserved, which
+  include calls in flight at a stop (allowed by the Restarts text). The two are equal once its
+  builds have ended.
+- **Claim-page hold.** `Budget.hold` and `reserve(use_hold=True)` implement F98. Once a batch
+  is exhausted, every reservation is refused, including one from a hold, because the spec
+  says the batch "makes no more provider calls". With shares (budget over new domains, at
+  most 80), exhaustion happens only when the budget is below the number of new domains.
+- **Research versus search pages.** Search-page reads still wait for research, as in the plan.
+  In the fast regime, a run still unfinished at the 8 s guard therefore leaves no time to read
+  search pages: the build ends `ready` within 10 s with what it has. A run that fails (start
+  refused, 3 failed polls, or no response) gives up early, and its search pages are read.
+- **UI.** Each of the six field cards also states how many independent sources stand behind
+  its value, as text without a data-testid. Evidence candidates show their origin.
+- **Test fake.** `tests/fakes.py` gains `poll_failures` and `never_done` so research failures
+  can be tested.
+- **Fixture.** `tests/fixtures/stage3-export.json` was produced by running the frozen
+  `stage-3/` service in-process against its own fake web, with Python run as `-B`. Nothing in
+  stage-3/ changed.
