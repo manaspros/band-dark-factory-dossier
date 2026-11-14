@@ -3,13 +3,17 @@ builds, history and feed survive a stage-3 import unchanged).
 
 Every check is type-first, so a JSON value of any type gives False, never an error, and
 every imported excerpt must support the value it is given for (lead rulings on import).
-A field must be exactly what the selection rule makes of its candidates; a build's pages
-must cover its candidates; the current fields must be those of the last ready build.
+A field must be exactly what the selection rule makes of its candidates (so its true_from
+is its selected candidate's, and for executives its members' latest); every candidate must
+have the true_from of its page version in the build that gathered it; the current fields
+must be those of the last ready build; and the history and the feed must be exactly the
+entries the dossier's ready builds add, in order (app.history).
 """
 from __future__ import annotations
 
 from app.executives import EXECUTIVES, decide_executives
 from app.fields import ALL_FIELDS, empty_fields, field_candidates
+from app.history import entries_for_build
 from app.migrate import (CANDIDATE_KEYS, excerpt_supports, in_field_format, is_int, is_rfc3339,
                          is_str, valid_citation, valid_source)
 from app.pages import KINDS, parse_date
@@ -82,13 +86,15 @@ def valid_fields(fields, domain: str) -> bool:
 
 
 def _valid_pages(pages, fields: dict) -> bool:
-    """One page per URL, and every candidate's page is listed."""
+    """One page version per URL, and every candidate's page listed with the candidate's
+    true_from (a page's candidates all hold from the page's date)."""
     if not isinstance(pages, list) or not all(
             isinstance(p, dict) and set(p) == {"url", "true_from"} and is_str(p["url"])
             and is_date(p["true_from"], nullable=True) for p in pages):
         return False
-    urls = {p["url"] for p in pages}
-    return len(urls) == len(pages) and all(c.url in urls for c in field_candidates(fields))
+    dates = {p["url"]: p["true_from"] for p in pages}
+    return len(dates) == len(pages) and all(
+        c.url in dates and dates[c.url] == c.true_from for c in field_candidates(fields))
 
 
 def valid_build(build, number: int, domain: str) -> bool:
@@ -163,3 +169,27 @@ def valid_feed(feed, domains: set[str]) -> bool:
             return False
         last = e["seq"]
     return True
+
+
+def derived_entries(builds: list) -> tuple[dict, list[dict]]:
+    """(history, feed entries without seq and domain) that a dossier's builds add, in order:
+    what app.commit records for each ready build (``builds`` are app.store.BuildRecord)."""
+    history: dict = {name: [] for name in ALL_FIELDS}
+    feed: list[dict] = []
+    previous, first_ready = empty_fields(), True
+    for build in builds:
+        if build.outcome != "ready":
+            continue
+        for name, entry, change in entries_for_build(previous, build.fields, first_ready,
+                                                     build.time):
+            history[name].append(entry)
+            if change is not None:
+                feed.append(change)
+        previous, first_ready = build.fields, False
+    return history, feed
+
+
+def feed_of(feed: list[dict], domain: str) -> list[dict]:
+    """A dossier's feed entries, in seq order, without seq and domain."""
+    return [{k: v for k, v in e.items() if k not in ("seq", "domain")}
+            for e in feed if e["domain"] == domain]
